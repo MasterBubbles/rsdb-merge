@@ -1,7 +1,7 @@
 try:
     import zstandard as zs
 except ImportError:
-    raise ImportError("Would you be so kind as to LEARN TO FUCKING READ INSTRUCTIONS")
+    raise ImportError("Would you be so kind as to LEARN TO FUCKING READ INSTRUCTIONS") # That one wasn't me, please blame dt12345 :)
 import sarc
 import os
 import io
