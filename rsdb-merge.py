@@ -198,7 +198,8 @@ def generate_changelog_for_file(yaml_file_path, master_file_path):
     for line in master_data:
         block_master.append(line)
         if "__RowId:" in line:
-            master_blocks[line] = block_master
+            row_id = line.split("__RowId:")[1].strip()  # Get the part of the line after "__RowId:"
+            master_blocks[row_id] = block_master
             block_master = []
 
     # Process each block in yaml_data
@@ -206,9 +207,10 @@ def generate_changelog_for_file(yaml_file_path, master_file_path):
     for line in yaml_data:
         block_yaml.append(line)
         if "__RowId:" in line:
-            if line in master_blocks:
+            row_id = line.split("__RowId:")[1].strip()  # Get the part of the line after "__RowId:"
+            if row_id in master_blocks:
                 # Compare the entire block, not just the __RowId line
-                if ''.join(block_yaml) != ''.join(master_blocks[line]):
+                if ''.join(block_yaml) != ''.join(master_blocks[row_id]):
                     # Block is edited
                     changelog["Edited blocks"].append(''.join(block_yaml))
             else:
