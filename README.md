@@ -29,7 +29,7 @@ Once you have all json changelogs from each of your mods containing RSDB edits, 
 
 `rsdb-merge.exe --apply-changelogs "PATH_TO_FOLDER_CONTAINING_JSONS" --output "PATH_TO_WHERE_YOU_WANT_RSDB_FILES_GENERATED" --version 121`
 
-This second command will will use all json changelogs to merge the edits and generate RSDB files for version 1.2.1 in the output folder you choose (you can change `--version 121` to generate merged RSDB files for any version you want)
+This second command will use all json changelogs to merge the edits and generate RSDB files for version 1.2.1 in the output folder you choose (you can change `--version 121` to generate merged RSDB files for any version you want)
 
 ## Help
 ```
