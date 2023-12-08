@@ -1,9 +1,7 @@
 # rsdb-merge
 Merge some of the RSDB file types from TOTK
 
-Currently untested
-
-"Supported" RSDB files (maybe? please test and let me know):
+Supported RSDB files:
 - ActorInfo.Product
 - AttachmentActorInfo.Product
 - Challenge.Product
@@ -16,6 +14,7 @@ Currently untested
 - GameEventMetadata.Product
 - LocatorData.Product
 - PouchActorInfo.Product
+- Tag.Product
 - XLinkPropertyTableList.Product
 
 ## Usage
@@ -24,27 +23,31 @@ For each mod containing RSDB files, use this command to generate json changelogs
 
 `rsdb-merge.exe --generate-changelog "PATH_TO_RSDB_FOLDER" --output "path to where to generate the changelog"`
 
-You can rename the changelog to anything you want, like "ModName_RSDB.json"
+After generating a changelog, rename it to anything you want, like "ModName_RSDB.json" (to avoid it getting overwritten when generating another one).
 
-Once you have all json changelogs from each of your mods containing RSDB edits, place them all in the same folder and use this command:
+Once you have all json changelogs from each of your mods containing RSDB edits, place them all in the same folder (preferably a new empty folder) and use this command:
 
-`rsdb-merge.exe --apply-changelogs "PATH_TO_FOLDER_CONTAINING_JSONS" --output "path to where to generate RSDB files" --version 121`
+`rsdb-merge.exe --apply-changelogs "PATH_TO_FOLDER_CONTAINING_JSONS" --output "PATH_TO_WHERE_YOU_WANT_RSDB_FILES_GENERATED" --version 121`
 
-This second command will generate RSDB files for version 1.2.1 (you can change `--version 121` to whatever version you want)
+This second command will will use all json changelogs to merge the edits and generate RSDB files for version 1.2.1 in the output folder you choose (you can change `--version 121` to generate merged RSDB files for any version you want)
 
 ## Help
 ```
-usage: rsdb-merge.exe [-h] [--generate-changelog GENERATE_CHANGELOG] [--output OUTPUT]
-                      [--apply-changelogs APPLY_CHANGELOGS] [--version VERSION]
+usage: rsdb-merge.exe [-h] [--generate-changelog GENERATE_CHANGELOG]
+                      [--apply-changelogs APPLY_CHANGELOGS]
+                      [--output OUTPUT] [--version VERSION]
 
 Generate and apply changelogs for RSDB
 
 options:
   -h, --help            show this help message and exit
   --generate-changelog GENERATE_CHANGELOG
-                        Path to the folder containing .byml.zs files to generate changelogs.
-  --output OUTPUT       Output path for the generated changelog or for the generated RSDB files.
+                        Path to the folder containing .byml.zs files to
+                        generate changelogs.
   --apply-changelogs APPLY_CHANGELOGS
-                        Path to the folder containing .json changelogs to apply.
-  --version VERSION     Version of the master file to use as a base.
+                        Path to the folder containing .json changelogs to
+                        apply.
+  --output OUTPUT       Path to the output directory for the generated
+                        changelog or for the generated RSDB files.
+  --version VERSION     Version of TOTK for which to generate RSDB files (example: 121)
 ```
