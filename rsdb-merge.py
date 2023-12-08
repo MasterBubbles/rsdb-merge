@@ -1,8 +1,16 @@
 import os
+import json
+import yaml
+import glob
 import argparse
 import subprocess
 import sys
 from zstd import Zstd
+
+def ul_constructor(loader, node):
+    return int(node.value)
+
+yaml.SafeLoader.add_constructor('!ul', ul_constructor)
 
 def get_correct_path(relative_path):
     try:
@@ -19,57 +27,16 @@ def get_correct_path(relative_path):
 
     return os.path.join(base_path, relative_path)
 
-# Set up the argument parser
-parser = argparse.ArgumentParser(description='Merge two .byml.zs files (RSDB only)')
-parser.add_argument('--file1', required=True, help='Path to the first .byml.zs file.')
-parser.add_argument('--file2', required=True, help='Path to the second .byml.zs file.')
-
-# Parse the arguments
-args = parser.parse_args()
-
-# Get the directory of the byml.exe executable
-if getattr(sys, 'frozen', False):
-    application_path = os.path.dirname(sys.executable)
-else:
-    application_path = os.path.dirname(os.path.abspath(__file__))
-
-# Use the application_path to define the output paths for the YAML files
-yaml1 = os.path.join(application_path, "file1.yaml")
-yaml2 = os.path.join(application_path, "file2.yaml")
-
 # Get the absolute path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 dist_path = "dist"
 dist_path = get_correct_path(dist_path)
 byml_to_yaml_exe = os.path.join(dist_path, "byml-to-yaml.exe")
+master_dir = "master"
+master_dir = get_correct_path(master_dir)
 
-# Convert the provided BYML files to YAML
-decompressor = Zstd()
-decompressor.Decompress(args.file1, output_dir=application_path, with_dict=True, no_output=False)
-decompressed_file1_path = os.path.join(application_path, os.path.basename(args.file1)[:-3])  # Remove the .zs extension
-decompressed_file1_path = get_correct_path(decompressed_file1_path)
-decompressor.Decompress(args.file2, output_dir=application_path, with_dict=True, no_output=False)
-decompressed_file2_path = os.path.join(application_path, os.path.basename(args.file2)[:-3])  # Remove the .zs extension
-decompressed_file2_path = get_correct_path(decompressed_file2_path)
-
-try:
-    subprocess_output = subprocess.check_output(
-        [byml_to_yaml_exe, "to-yaml", decompressed_file1_path, "-o", yaml1],
-        stderr=subprocess.STDOUT
-    )
-except subprocess.CalledProcessError as e:
-    print(f"Command failed with exit status {e.returncode}: {e.output.decode()}")
-
-try:
-    subprocess_output = subprocess.check_output(
-        [byml_to_yaml_exe, "to-yaml", decompressed_file2_path, "-o", yaml2],
-        stderr=subprocess.STDOUT
-    )
-except subprocess.CalledProcessError as e:
-    print(f"Command failed with exit status {e.returncode}: {e.output.decode()}")
-
-def find_last_row_id_chunk(file2_path):
-    with open(file2_path, 'r') as file:
+def find_last_row_id_chunk(yaml2):
+    with open(yaml2, 'r') as file:
         lines = file.readlines()
 
     last_row_id_chunk = []
@@ -88,28 +55,40 @@ def find_last_row_id_chunk(file2_path):
 
     return last_row_id
 
-def find_most_similar_master(file1_path):
+def count_common_lines(file_content, master_content):
+    # Split the file content into lines and use sets for quick comparison
+    file_lines = set(file_content.splitlines())
+    master_lines = set(master_content.splitlines())
+    # Count the number of common lines
+    common_lines = file_lines.intersection(master_lines)
+    return len(common_lines)
+
+def find_most_similar_master(yaml1):
     master_dir = "master"
     master_dir = get_correct_path(master_dir)
     master_files = os.listdir(master_dir)
     master_files = [file for file in master_files if file.endswith('.yaml')]
-    best_similarity = 0
+    
+    with open(yaml1, 'r') as file1:
+        file1_content = file1.read()
+
+    best_match_count = 0
     most_similar_master = None
 
     for master_file in master_files:
         master_path = os.path.join(master_dir, master_file)
-        with open(file1_path, 'r') as file1, open(master_path, 'r') as master:
-            file1_content = file1.read()
+        with open(master_path, 'r') as master:
             master_content = master.read()
-            similarity = similar_ratio(file1_content, master_content)
-            if similarity > best_similarity:
-                best_similarity = similarity
+            common_line_count = count_common_lines(file1_content, master_content)
+            if common_line_count > best_match_count:
+                best_match_count = common_line_count
                 most_similar_master = master_file
 
-    return most_similar_master
-
-def similar_ratio(a, b):
-    return sum(1 for x, y in zip(a, b) if x == y) / max(len(a), len(b))
+    if most_similar_master:
+        return most_similar_master
+    else:
+        print('No master found!')
+        return None
 
 def custom_merge(master_data, data1, data2):
     result = []
@@ -201,59 +180,197 @@ def merge_yaml_files(yaml_files, output_yaml, master_yaml):
     with open(output_yaml, 'w') as file:
         file.writelines(merged_data)
 
-if __name__ == "__main__":
-    most_similar_master = find_most_similar_master("file1.yaml")
-    master_dir = "master"
-    master_dir = get_correct_path(master_dir)
-    if most_similar_master:
-        master_path = os.path.join(master_dir, most_similar_master)
-        master_file_name_without_extension = os.path.splitext(most_similar_master)[0]
-        print(f"Using version: {master_file_name_without_extension}")
-    else:
-        print('No master found!')
-        exit()
-    file1_path = "file1.yaml"
-    file2_path = "file2.yaml"
-    yaml_files = ["file1.yaml", "file2.yaml"]
-    output_yaml = "merged.yaml"
+def generate_changelog_for_file(yaml_file_path, master_file_path):
+    with open(yaml_file_path, 'r') as file:
+        yaml_data = file.readlines()
+    
+    with open(master_file_path, 'r') as file:
+        master_data = file.readlines()
+    
+    changelog = {
+        "Added blocks": [],
+        "Edited blocks": []
+    }
+    
+    # Create a dictionary to map __RowId lines to blocks in master_data
+    master_blocks = {}
+    block_master = []
+    for line in master_data:
+        block_master.append(line)
+        if "__RowId:" in line:
+            master_blocks[line] = block_master
+            block_master = []
 
-    last_row_id = find_last_row_id_chunk(file2_path)
-    merge_yaml_files(yaml_files, output_yaml, master_path)
+    # Process each block in yaml_data
+    block_yaml = []
+    for line in yaml_data:
+        block_yaml.append(line)
+        if "__RowId:" in line:
+            if line in master_blocks:
+                # Compare the entire block, not just the __RowId line
+                if ''.join(block_yaml) != ''.join(master_blocks[line]):
+                    # Block is edited
+                    changelog["Edited blocks"].append(''.join(block_yaml))
+            else:
+                # Block is added
+                changelog["Added blocks"].append(''.join(block_yaml))
+            block_yaml = []  # Reset block for the next one
 
-    file = open('merged.yaml', 'a')
-    #file.writelines(last_row_id)
-    file.close()
+    return changelog
 
-    for yaml_file in yaml_files:
-        if os.path.exists(yaml_file):
-            os.remove(yaml_file)
+def generate_changelogs(folder_path, output_path):
+    # List of recognized types
+    recognized_types = [
+        "ActorInfo", "AttachmentActorInfo", "Challenge", "EnhancementMaterialInfo",
+        "EventPlayEnvSetting", "EventSetting", "GameActorInfo", "GameAnalyzedEventInfo",
+        "GameEventBaseSetting", "GameEventMetadata", "LocatorData", "PouchActorInfo",
+        "XLinkPropertyTableList"
+    ]
 
-    merged_byml_path = os.path.join(application_path, "merged.byml")
+    # Initialize changelog dictionary with sections for each type
+    changelog = {type_name: {"Added blocks": [], "Edited blocks": []} for type_name in recognized_types}
 
-    try:
-        subprocess_output = subprocess.check_output(
-            [byml_to_yaml_exe, "to-byml", "merged.yaml", "-o", merged_byml_path],
-            stderr=subprocess.STDOUT
-        )
-    except subprocess.CalledProcessError as e:
-        print(f"Command failed with exit status {e.returncode}: {e.output.decode()}")
+    # Dictionary to hold the latest version file for each type
+    latest_files = {}
 
-    # Initialize the Zstd compressor
-    output_compressed_path = merged_byml_path + ".zs"
+    # Identify the latest version file for each type
+    for file_name in os.listdir(folder_path):
+        for type_name in recognized_types:
+            if file_name.startswith(type_name) and file_name.endswith('.byml.zs'):
+                version = int(file_name.split('.')[2])  # Assuming version is always an integer
+                if type_name not in latest_files or version > latest_files[type_name][1]:
+                    latest_files[type_name] = (file_name, version)
+
+    # Decompress and convert .byml.zs files
+    for type_name, (file_name, version) in latest_files.items():
+        if file_name.startswith(tuple(recognized_types)) and file_name.endswith('.byml.zs'):
+            decompressed_file_path = os.path.join(folder_path, file_name[:-3])  # Remove .zs extension
+            yaml_file_path = decompressed_file_path[:-4] + 'yaml'
+            # Decompress and convert to YAML
+            decompressor = Zstd()
+            decompressor.Decompress(os.path.join(folder_path, file_name), output_dir=folder_path, with_dict=True, no_output=False)
+            subprocess.call([byml_to_yaml_exe, "to-yaml", decompressed_file_path, "-o", yaml_file_path])
+            
+            # Find the most similar master file
+            most_similar_master = find_most_similar_master(yaml_file_path)
+            master_file_path = os.path.join(get_correct_path("master"), most_similar_master)
+            
+            # Generate changelog
+            file_changelog = generate_changelog_for_file(yaml_file_path, master_file_path)
+            
+            # Update the main changelog dictionary with the changes for this type
+            changelog[type_name]["Added blocks"].extend(file_changelog["Added blocks"])
+            changelog[type_name]["Edited blocks"].extend(file_changelog["Edited blocks"])
+
+            # Clean up intermediate files
+            os.remove(decompressed_file_path)
+            os.remove(yaml_file_path)
+
+    # Save the accumulated changelog to a single JSON file
+    changelog_file_path = os.path.join(output_path, "changelog.json")
+    with open(changelog_file_path, 'w') as file:
+        json.dump(changelog, file, indent=4)
+
+def apply_changelogs(changelog_dir, version, output_dir):
+    # Get the list of all JSON files in the directory
+    changelog_files = glob.glob(os.path.join(changelog_dir, '*.json'))
+
+    # Iterate over all JSON files
+    for changelog_file in changelog_files:
+        # Load the changelog
+        with open(changelog_file, 'r') as f:
+            changelog = json.load(f)
+
+        # Iterate over all recognized types in the changelog
+        for recognized_type, changes in changelog.items():
+            # Skip this recognized type if there are no edited blocks
+            if not changes["Added blocks"] and not changes["Edited blocks"]:
+                continue
+
+            # Get the path to the master file for this recognized type
+            master_file_path = os.path.join(master_dir, f'{recognized_type}.Product.{version}.rstbl.yaml')
+            output_file_path = os.path.join(output_dir, f'{recognized_type}.Product.{version}.rstbl.yaml')
+
+            # Load the master file if it exists, otherwise start with an empty list
+            if os.path.exists(output_file_path):
+                with open(output_file_path, 'r') as f:
+                    master_data = f.readlines()
+            elif os.path.exists(master_file_path):
+                with open(master_file_path, 'r') as f:
+                    master_data = f.readlines()
+            else:
+                master_data = []
+
+            # Create a temporary YAML file for the edited blocks
+            temp_yaml_path = os.path.join(output_dir, 'temp.yaml')
+            with open(temp_yaml_path, 'w') as f:
+                for block_str in changes["Edited blocks"]:
+                    f.write(block_str)
+
+            # Load the temporary YAML file
+            with open(temp_yaml_path, 'r') as f:
+                temp_data = f.readlines()
+
+            # Remove the temporary YAML file
+            os.remove(temp_yaml_path)
+
+            # Process the master data and the temporary data
+            master_blocks = {}
+            temp_blocks = {}
+            for data, blocks in [(master_data, master_blocks), (temp_data, temp_blocks)]:
+                block = []
+                for line in data:
+                    block.append(line)
+                    if "__RowId:" in line:
+                        row_id = line.split("__RowId:")[1].strip()
+                        blocks[row_id] = block
+                        block = []
+
+            # Replace the blocks in the master data with the blocks from the temporary data
+            for row_id, block in temp_blocks.items():
+                if row_id in master_blocks:
+                    master_blocks[row_id] = block
+
+            # Save the updated master data
+            with open(output_file_path, 'w') as f:
+                for block in master_blocks.values():
+                    f.writelines(block)
+
+            # Append the added blocks to the end of the file
+            with open(output_file_path, 'a') as f:
+                for block_str in changes["Added blocks"]:
+                    f.write(block_str)
+    # Create a Zstd compressor
     compressor = Zstd()
 
-    # Compress the merged.byml file
-    compressor._CompressFile(merged_byml_path, output_dir='', level=16, with_dict=True)
+    # After all changelogs have been processed, convert all the output YAML files to BYML, compress them, and delete the YAML files
+    for output_file in glob.glob(os.path.join(output_dir, '*.yaml')):
+        updated_byml_path = output_file[:-4] + 'byml'
+        subprocess.call([byml_to_yaml_exe, 'to-byml', output_file, '-o', updated_byml_path])
+        
+        # Compress the BYML file
+        compressor._CompressFile(updated_byml_path, output_dir=output_dir, level=16, with_dict=True)
 
-    # Clean up the intermediate files
-    os.remove(merged_byml_path)
-    bylm1_path = "file1.byml"
-    byml2_path = "file2.byml"
-    os.remove(bylm1_path)
-    os.remove(byml2_path)
+        # Remove the uncompressed files
+        os.remove(output_file)
+        os.remove(updated_byml_path)
 
-    print(f"Compressed file outputted as: {output_compressed_path}")
+# Set up the argument parser
+parser = argparse.ArgumentParser(description='Generate and apply changelogs for RSDB')
+parser.add_argument('--generate-changelog', help='Path to the folder containing .byml.zs files to generate changelogs.')
+parser.add_argument('--output', help='Output path for the generated changelog or for the generated RSDB files.')
+parser.add_argument('--apply-changelogs', help='Path to the folder containing .json changelogs to apply.')
+parser.add_argument('--version', help='Version of the master file to use as a base.')
 
-    os.remove(output_yaml)
+# Parse the arguments
+args = parser.parse_args()
 
-    print("Tasks completed successfully!")
+if args.generate_changelog:
+    output_path = args.output if args.output else os.path.dirname(os.path.abspath(__file__))
+    generate_changelogs(args.generate_changelog, output_path)
+
+if args.apply_changelogs:
+    if not (args.version and args.output):
+        print("Error: --version and --output must be provided when using --apply-changelogs")
+        sys.exit(1)
+    apply_changelogs(args.apply_changelogs, args.version, args.output)
