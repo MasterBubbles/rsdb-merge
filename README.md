@@ -31,6 +31,8 @@ Once you have all json changelogs from each of your mods containing RSDB edits, 
 
 This second command will use all json changelogs to merge the edits and generate RSDB files for version 1.2.1 in the output folder you choose (you can change `--version 121` to generate merged RSDB files for any version you want)
 
+The priority works with the alphanumerical order of the json changelogs' file names. So for example if a.json and b.json both edit the same blocks of data, the edit from b.json will overwrite it (this is only for blocks that are edited and not blocks that are added).
+
 ## Help
 ```
 usage: rsdb-merge.exe [-h] [--generate-changelog GENERATE_CHANGELOG]
@@ -51,3 +53,8 @@ options:
                         changelog or for the generated RSDB files.
   --version VERSION     Version of TOTK for which to generate RSDB files (example: 121)
 ```
+
+## Special thanks
+
+- Thanks to [Arch Leaders](https://github.com/ArchLeaders) for [byml-to-yaml](https://github.com/ArchLeaders/byml_to_yaml/)
+- Thanks to [MediaMoots](https://github.com/MediaMoots) for [Tag.Product-Tool](https://github.com/MediaMoots/Tag.Product-Tool)
