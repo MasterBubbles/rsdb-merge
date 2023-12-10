@@ -30,19 +30,20 @@ tag_product_exe = os.path.join(dist_path, "TagProductTool.exe")
 master_dir = "master"
 master_dir = get_correct_path(master_dir)
 
-def count_common_lines(file_content, master_content):
-    # Split the file content into lines and use sets for quick comparison
-    file_lines = set(file_content.splitlines())
-    master_lines = set(master_content.splitlines())
-    # Count the number of common lines
-    common_lines = file_lines.intersection(master_lines)
-    return len(common_lines)
 
-def find_most_similar_master(compared_file):
+def count_common_lines(file_content, master_content):
+    # Split the file content into lines
+    file_lines = file_content.splitlines()
+    master_lines = master_content.splitlines()
+    # Count the number of identical lines
+    identical_line_count = sum(f == m for f, m in zip(file_lines, master_lines))
+    return identical_line_count
+
+def find_most_similar_master_json(compared_file):
     master_dir = "master"
     master_dir = get_correct_path(master_dir)
     master_files = os.listdir(master_dir)
-    master_files = [file for file in master_files if file.endswith(('.yaml', '.json'))]
+    master_files = [file for file in master_files if file.endswith(('.json'))]
     
     with open(compared_file, 'r') as file1:
         file1_content = file1.read()
@@ -57,6 +58,41 @@ def find_most_similar_master(compared_file):
             common_line_count = count_common_lines(file1_content, master_content)
             if common_line_count > best_match_count:
                 best_match_count = common_line_count
+                most_similar_master = master_file
+
+    if most_similar_master:
+        return most_similar_master
+    else:
+        print('No master found!')
+        return None
+
+def count_common_blocks(file_content, master_content):
+    # Split the file content into blocks
+    file_blocks = set(file_content.split("__RowId:"))
+    master_blocks = set(master_content.split("__RowId:"))
+    # Count the number of identical blocks
+    identical_block_count = len(file_blocks & master_blocks)
+    return identical_block_count
+
+def find_most_similar_master(compared_file):
+    master_dir = "master"
+    master_dir = get_correct_path(master_dir)
+    master_files = os.listdir(master_dir)
+    master_files = [file for file in master_files if file.endswith(('.yaml'))]
+    
+    with open(compared_file, 'r') as file1:
+        file1_content = file1.read()
+
+    best_match_count = 0
+    most_similar_master = None
+
+    for master_file in master_files:
+        master_path = os.path.join(master_dir, master_file)
+        with open(master_path, 'r') as master:
+            master_content = master.read()
+            common_block_count = count_common_blocks(file1_content, master_content)
+            if common_block_count > best_match_count:
+                best_match_count = common_block_count
                 most_similar_master = master_file
 
     if most_similar_master:
@@ -95,7 +131,7 @@ def generate_changelog_for_yaml(yaml_file_path, master_file_path):
         "Added blocks": [],
         "Edited blocks": []
     }
-    
+
     # Create a dictionary to map __RowId lines to blocks in master_data
     master_blocks = {}
     block_master = []
@@ -129,8 +165,8 @@ def generate_changelogs(folder_path, output_path):
     recognized_types = [
         "ActorInfo.Product", "AttachmentActorInfo.Product", "Challenge.Product", "EnhancementMaterialInfo.Product",
         "EventPlayEnvSetting.Product", "EventSetting.Product", "GameActorInfo.Product", "GameAnalyzedEventInfo.Product",
-        "GameEventBaseSetting.Product", "GameEventMetadata.Product", "LocatorData.Product", "PouchActorInfo.Product",
-        "XLinkPropertyTableList.Product", "Tag.Product"
+        "GameEventBaseSetting.Product", "GameEventMetadata.Product", "LoadingTips.Product", "Location.Product.",
+        "LocatorData.Product", "PouchActorInfo.Product", "XLinkPropertyTableList.Product", "Tag.Product"
     ]
 
     # Initialize changelog dictionary with sections for each type
@@ -160,7 +196,7 @@ def generate_changelogs(folder_path, output_path):
                     json_data = json.load(file)
                 
                 # Find the most similar master file
-                most_similar_master = find_most_similar_master(json_file_path)
+                most_similar_master = find_most_similar_master_json(json_file_path)
                 master_file_path = os.path.join(get_correct_path("master"), most_similar_master)
                 print("Version detected:", most_similar_master[:-5])
                 
@@ -339,7 +375,7 @@ parser = argparse.ArgumentParser(description='Generate and apply changelogs for 
 parser.add_argument('--generate-changelog', help='Path to the folder containing .byml.zs files to generate changelogs.')
 parser.add_argument('--apply-changelogs', help='Path to the folder containing .json changelogs to apply.')
 parser.add_argument('--output', help='Path to the output directory for the generated changelog or for the generated RSDB files.')
-parser.add_argument('--version', help='Version of TOTK to generade RSDB files for.')
+parser.add_argument('--version', help='Version of TOTK for which to generate RSDB files (example: 121).')
 
 # Parse the arguments
 args = parser.parse_args()
