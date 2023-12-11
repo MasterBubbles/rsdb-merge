@@ -12,6 +12,8 @@ Supported RSDB files:
 - GameAnalyzedEventInfo.Product
 - GameEventBaseSetting.Product
 - GameEventMetadata.Product
+- LoadingTips.Product
+- Location.Product
 - LocatorData.Product
 - PouchActorInfo.Product
 - Tag.Product
