@@ -1,4 +1,4 @@
-# rsdb-merge
+# rsdb-merge [![Downloads](https://img.shields.io/github/downloads/MasterBubbles/rsdb-merge/total)](https://github.com/MasterBubbles/rsdb-merge/releases)
 Merge some of the RSDB file types from TOTK
 
 Supported RSDB files:
