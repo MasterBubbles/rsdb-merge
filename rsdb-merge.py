@@ -246,7 +246,7 @@ def generate_changelogs(folder_path, output_path):
                 sys.exit(1)
             
     # Save the accumulated changelog to a single JSON file
-    changelog_file_path = os.path.join(output_path, "changelog.json")
+    changelog_file_path = os.path.join(output_path, "rsdb.json")
     with open(changelog_file_path, 'w') as file:
         json.dump(changelog, file, indent=4)
     print("Changelog successfully generated at:", changelog_file_path)
