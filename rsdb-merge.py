@@ -251,129 +251,142 @@ def generate_changelogs(folder_path, output_path):
         json.dump(changelog, file, indent=4)
     print("Changelog successfully generated at:", changelog_file_path)
 
-def apply_changelogs(changelog_dir, version, output_dir):
-    # Get the list of all JSON files in the directory
-    changelog_files = glob.glob(os.path.join(changelog_dir, '*.json'))
+def apply_changelogs(changelog_dirs, version, output_dir):
+    # List of recognized types
+    recognized_types = [
+        "ActorInfo.Product", "AttachmentActorInfo.Product", "Challenge.Product", "EnhancementMaterialInfo.Product",
+        "EventPlayEnvSetting.Product", "EventSetting.Product", "GameActorInfo.Product", "GameAnalyzedEventInfo.Product",
+        "GameEventBaseSetting.Product", "GameEventMetadata.Product", "LoadingTips.Product", "Location.Product",
+        "LocatorData.Product", "PouchActorInfo.Product", "XLinkPropertyTableList.Product", "Tag.Product"
+    ]
+    # Iterate over all provided directories
+    for changelog_dir in changelog_dirs:
+        # Get the list of all JSON files in the directory
+        changelog_files = glob.glob(os.path.join(changelog_dir, '*.json'))
 
-    # Iterate over all JSON files
-    for changelog_file in changelog_files:
-        # Load the changelog
-        with open(changelog_file, 'r') as f:
-            changelog = json.load(f)
+        # Iterate over all JSON files
+        for changelog_file in changelog_files:
+            # Load the changelog
+            with open(changelog_file, 'r') as f:
+                changelog = json.load(f)
 
-        # Iterate over all recognized types in the changelog
-        for recognized_type, changes in changelog.items():
-            # Skip this recognized type if there are no edited blocks
-            if not changes["Added blocks"] and not changes["Edited blocks"]:
+            # Check if if this is a RSDB changelog
+            if not all(type in changelog for type in recognized_types):
                 continue
 
-            # Get the path to the master file for this recognized type
-            master_file_path = os.path.join(master_dir, f'{recognized_type}.{version}.rstbl.yaml')
-            output_file_path = os.path.join(output_dir, f'{recognized_type}.{version}.rstbl.yaml')
+            # Iterate over all recognized types in the changelog
+            for recognized_type, changes in changelog.items():
+                # Skip this recognized type if there are no edited blocks
+                if not changes["Added blocks"] and not changes["Edited blocks"]:
+                    continue
 
-            if recognized_type == "Tag.Product":
-                # Handle "Tag.Product" type as JSON
-                master_file_path = master_file_path.replace('.yaml', '.byml.zs.json')
-                output_file_path = output_file_path.replace('.yaml', '.byml.zs.json')
+                # Get the path to the master file for this recognized type
+                master_file_path = os.path.join(master_dir, f'{recognized_type}.{version}.rstbl.yaml')
+                output_file_path = os.path.join(output_dir, f'{recognized_type}.{version}.rstbl.yaml')
 
-                # Load the master file if it exists, otherwise start with an empty dictionary
-                if os.path.exists(output_file_path):
-                    with open(output_file_path, 'r') as f:
-                        master_data = json.load(f)
-                elif os.path.exists(master_file_path):
-                    with open(master_file_path, 'r') as f:
-                        master_data = json.load(f)
-                else:
-                    master_data = {"ActorTagData": {}}
+                if recognized_type == "Tag.Product":
+                    # Handle "Tag.Product" type as JSON
+                    master_file_path = master_file_path.replace('.yaml', '.byml.zs.json')
+                    output_file_path = output_file_path.replace('.yaml', '.byml.zs.json')
 
-                # Apply edited blocks
-                for block in changes["Edited blocks"]:
-                    for actor, tags in block.items():
-                        master_data["ActorTagData"][actor] = tags
+                    # Load the master file if it exists, otherwise start with an empty dictionary
+                    if os.path.exists(output_file_path):
+                        with open(output_file_path, 'r') as f:
+                            master_data = json.load(f)
+                    elif os.path.exists(master_file_path):
+                        with open(master_file_path, 'r') as f:
+                            master_data = json.load(f)
+                    else:
+                        master_data = {"ActorTagData": {}}
 
-                # Add new blocks
-                for block in changes["Added blocks"]:
-                    for actor, tags in block.items():
-                        if actor not in master_data["ActorTagData"]:
+                    # Apply edited blocks
+                    for block in changes["Edited blocks"]:
+                        for actor, tags in block.items():
                             master_data["ActorTagData"][actor] = tags
 
-                # Save the updated master data
-                with open(output_file_path, 'w') as f:
-                    json.dump(master_data, f, indent=4)
-            else:
-            
-                # Load the master file if it exists, otherwise start with an empty list
-                if os.path.exists(output_file_path):
-                    with open(output_file_path, 'r') as f:
-                        master_data = f.readlines()
-                elif os.path.exists(master_file_path):
-                    with open(master_file_path, 'r') as f:
-                        master_data = f.readlines()
+                    # Add new blocks
+                    for block in changes["Added blocks"]:
+                        for actor, tags in block.items():
+                            if actor not in master_data["ActorTagData"]:
+                                master_data["ActorTagData"][actor] = tags
+
+                    # Save the updated master data
+                    with open(output_file_path, 'w') as f:
+                        json.dump(master_data, f, indent=4)
                 else:
-                    master_data = []
+                
+                    # Load the master file if it exists, otherwise start with an empty list
+                    if os.path.exists(output_file_path):
+                        with open(output_file_path, 'r') as f:
+                            master_data = f.readlines()
+                    elif os.path.exists(master_file_path):
+                        with open(master_file_path, 'r') as f:
+                            master_data = f.readlines()
+                    else:
+                        master_data = []
 
-                # Create a temporary YAML file for the edited blocks
-                temp_yaml_path = os.path.join(output_dir, 'temp.yaml')
-                with open(temp_yaml_path, 'w') as f:
-                    for block_str in changes["Edited blocks"]:
-                        f.write(block_str)
+                    # Create a temporary YAML file for the edited blocks
+                    temp_yaml_path = os.path.join(output_dir, 'temp.yaml')
+                    with open(temp_yaml_path, 'w') as f:
+                        for block_str in changes["Edited blocks"]:
+                            f.write(block_str)
 
-                # Load the temporary YAML file
-                with open(temp_yaml_path, 'r') as f:
-                    temp_data = f.readlines()
+                    # Load the temporary YAML file
+                    with open(temp_yaml_path, 'r') as f:
+                        temp_data = f.readlines()
 
-                # Remove the temporary YAML file
-                os.remove(temp_yaml_path)
+                    # Remove the temporary YAML file
+                    os.remove(temp_yaml_path)
 
-                # Process the master data and the temporary data
-                master_blocks = {}
-                temp_blocks = {}
-                for data, blocks in [(master_data, master_blocks), (temp_data, temp_blocks)]:
-                    block = []
-                    for line in data:
-                        block.append(line)
-                        if "__RowId:" in line:
-                            row_id = line.split("__RowId:")[1].strip()
-                            blocks[row_id] = block
-                            block = []
+                    # Process the master data and the temporary data
+                    master_blocks = {}
+                    temp_blocks = {}
+                    for data, blocks in [(master_data, master_blocks), (temp_data, temp_blocks)]:
+                        block = []
+                        for line in data:
+                            block.append(line)
+                            if "__RowId:" in line:
+                                row_id = line.split("__RowId:")[1].strip()
+                                blocks[row_id] = block
+                                block = []
 
-                # Replace the blocks in the master data with the blocks from the temporary data
-                for row_id, block in temp_blocks.items():
-                    if row_id in master_blocks:
-                        master_blocks[row_id] = block
+                    # Replace the blocks in the master data with the blocks from the temporary data
+                    for row_id, block in temp_blocks.items():
+                        if row_id in master_blocks:
+                            master_blocks[row_id] = block
 
-                # Save the updated master data
-                with open(output_file_path, 'w') as f:
-                    for block in master_blocks.values():
-                        f.writelines(block)
+                    # Save the updated master data
+                    with open(output_file_path, 'w') as f:
+                        for block in master_blocks.values():
+                            f.writelines(block)
 
-                # Append the added blocks to the end of the file
-                with open(output_file_path, 'a') as f:
-                    for block_str in changes["Added blocks"]:
-                        f.write(block_str)
-    # After all changelogs have been processed, process each output file accordingly
-    for output_file in glob.glob(os.path.join(output_dir, '*')):
-        if output_file.endswith('.json'):
-            # Process "Tag.Product" type with tag_product_exe
-            subprocess.run([tag_product_exe, output_file, output_dir], capture_output=True, text=True)
-            os.remove(output_file)
-        elif output_file.endswith('.yaml'):
-            # Convert other types to BYML, compress them, and delete the YAML files
-            updated_byml_path = output_file[:-4] + 'byml'
-            subprocess.call([byml_to_yaml_exe, 'to-byml', output_file, '-o', updated_byml_path])
-            
-            # Compress the BYML file
-            compressor = Zstd()
-            compressor._CompressFile(updated_byml_path, output_dir=output_dir, level=16, with_dict=True)
+                    # Append the added blocks to the end of the file
+                    with open(output_file_path, 'a') as f:
+                        for block_str in changes["Added blocks"]:
+                            f.write(block_str)
+        # After all changelogs have been processed, process each output file accordingly
+        for output_file in glob.glob(os.path.join(output_dir, '*')):
+            if output_file.endswith('.json'):
+                # Process "Tag.Product" type with tag_product_exe
+                subprocess.run([tag_product_exe, output_file, output_dir], capture_output=True, text=True)
+                os.remove(output_file)
+            elif output_file.endswith('.yaml'):
+                # Convert other types to BYML, compress them, and delete the YAML files
+                updated_byml_path = output_file[:-4] + 'byml'
+                subprocess.call([byml_to_yaml_exe, 'to-byml', output_file, '-o', updated_byml_path])
+                
+                # Compress the BYML file
+                compressor = Zstd()
+                compressor._CompressFile(updated_byml_path, output_dir=output_dir, level=16, with_dict=True)
 
-            # Remove the uncompressed files
-            os.remove(output_file)
-            os.remove(updated_byml_path)
+                # Remove the uncompressed files
+                os.remove(output_file)
+                os.remove(updated_byml_path)
 
 # Set up the argument parser
 parser = argparse.ArgumentParser(description='Generate and apply changelogs for RSDB')
 parser.add_argument('--generate-changelog', help='Path to the folder containing .byml.zs files to generate changelogs.')
-parser.add_argument('--apply-changelogs', help='Path to the folder containing .json changelogs to apply.')
+parser.add_argument('--apply-changelogs', nargs='+', help='Paths to the .json changelogs to apply.')
 parser.add_argument('--output', help='Path to the output directory for the generated changelog or for the generated RSDB files.')
 parser.add_argument('--version', help='Version of TOTK for which to generate RSDB files (example: 121).')
 
