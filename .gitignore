@@ -1,0 +1,12 @@
+__pycache__/
+dic/
+master/
+test/
+build/
+dist/
+*.pyc
+*.zs
+*.bat
+*.yaml
+*.json
+*.spec
