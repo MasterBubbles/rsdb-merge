@@ -386,7 +386,7 @@ def apply_changelogs(changelog_dirs, version, output_dir):
 # Set up the argument parser
 parser = argparse.ArgumentParser(description='Generate and apply changelogs for RSDB')
 parser.add_argument('--generate-changelog', help='Path to the folder containing .byml.zs files to generate changelogs.')
-parser.add_argument('--apply-changelogs', nargs='+', help='Paths to the .json changelogs to apply.')
+parser.add_argument('--apply-changelogs', nargs='+', help='Paths to the folders containing .json changelogs to apply.')
 parser.add_argument('--output', help='Path to the output directory for the generated changelog or for the generated RSDB files.')
 parser.add_argument('--version', help='Version of TOTK for which to generate RSDB files (example: 121).')
 
