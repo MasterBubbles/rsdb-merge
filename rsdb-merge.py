@@ -327,7 +327,7 @@ def apply_changelogs(changelog_dirs, version, output_dir):
                 changelog = json.load(f)
 
             # Check if if this is a RSDB changelog
-            if not all(type in changelog for type in recognized_types):
+            if not any(type in changelog for type in recognized_types):
                 continue
 
             # Iterate over all recognized types in the changelog
@@ -502,7 +502,7 @@ def apply_changelogs(changelog_dirs, version, output_dir):
                 compressor._CompressFile(updated_byml_path, output_dir=output_dir, level=16, with_dict=True)
 
                 # Remove the uncompressed files
-                #os.remove(output_file)
+                os.remove(output_file)
                 os.remove(updated_byml_path)
 
 # Set up the argument parser
