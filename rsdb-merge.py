@@ -5,6 +5,7 @@ import argparse
 import subprocess
 import sys
 from zstd import Zstd
+import yaml
 
 def get_correct_path(relative_path):
     try:
@@ -29,7 +30,6 @@ byml_to_yaml_exe = os.path.join(dist_path, "byml-to-yaml.exe")
 tag_product_exe = os.path.join(dist_path, "TagProductTool.exe")
 master_dir = "master"
 master_dir = get_correct_path(master_dir)
-
 
 def count_common_lines(file_content, master_content):
     # Split the file content into lines
@@ -74,11 +74,30 @@ def count_common_blocks(file_content, master_content):
     identical_block_count = len(file_blocks & master_blocks)
     return identical_block_count
 
+def count_common_blocks_for_tagdef(file_content, master_content):
+    # Split the file content into blocks and strip any leading or trailing whitespaces
+    file_blocks = set(block.strip() for block in file_content.split('}\n'))
+    master_blocks = set(block.strip() for block in master_content.split('}\n'))
+    # Count the number of identical blocks
+    identical_block_count = len(file_blocks & master_blocks)
+    return identical_block_count
+
 def find_most_similar_master(compared_file):
     master_dir = "master"
     master_dir = get_correct_path(master_dir)
     master_files = os.listdir(master_dir)
-    master_files = [file for file in master_files if file.endswith(('.yaml'))]
+
+    # Extract the prefix from the compared_file
+    compared_file_parts = os.path.basename(compared_file).split('.')
+    compared_file_prefix = '.'.join(compared_file_parts[:2])
+
+    if compared_file_prefix == "TagDef.Product":
+        count_common_blocks_func = count_common_blocks_for_tagdef
+    else:
+        count_common_blocks_func = count_common_blocks
+
+    # Filter the master_files based on the prefix
+    master_files = [file for file in master_files if file.startswith(compared_file_prefix) and file.endswith('.yaml')]
     
     with open(compared_file, 'r') as file1:
         file1_content = file1.read()
@@ -90,7 +109,7 @@ def find_most_similar_master(compared_file):
         master_path = os.path.join(master_dir, master_file)
         with open(master_path, 'r') as master:
             master_content = master.read()
-            common_block_count = count_common_blocks(file1_content, master_content)
+            common_block_count = count_common_blocks_func(file1_content, master_content)
             if common_block_count > best_match_count:
                 best_match_count = common_block_count
                 most_similar_master = master_file
@@ -117,6 +136,39 @@ def generate_changelog_for_json(json_data, master_data):
         else:
             # Actor is added
             changelog["Added blocks"].append({actor: tags})
+
+    return changelog
+
+import re
+
+def generate_changelog_for_tagdef(file_path, master_file_path):
+    # Load the file and master data
+    with open(file_path, 'r') as file:
+        file_data = [block + '}' for block in file.read().split('}\n') if block]
+    with open(master_file_path, 'r') as master_file:
+        master_data = [block + '}' for block in master_file.read().split('}\n') if block]
+
+    changelog = {
+        "Added blocks": [],
+        "Edited blocks": []
+    }
+
+    # Process each block in file_data
+    for block in file_data:
+        display_name_match = re.search(r'DisplayName: (.*?),', block)
+        if display_name_match:
+            display_name = display_name_match.group(1)
+            master_block = next((block for block in master_data if 'DisplayName: ' + display_name + ',' in block), None)
+            if master_block is None:
+                # Block is added
+                changelog["Added blocks"].append(block)
+            else:
+                # Sort the lines in the blocks before comparison
+                block_sorted = '\n'.join(sorted(block.split('\n')))
+                master_block_sorted = '\n'.join(sorted(master_block.split('\n')))
+                if block_sorted.strip() != master_block_sorted.strip():
+                    # Block is edited
+                    changelog["Edited blocks"].append(block)
 
     return changelog
 
@@ -166,7 +218,7 @@ def generate_changelogs(folder_path, output_path):
         "ActorInfo.Product", "AttachmentActorInfo.Product", "Challenge.Product", "EnhancementMaterialInfo.Product",
         "EventPlayEnvSetting.Product", "EventSetting.Product", "GameActorInfo.Product", "GameAnalyzedEventInfo.Product",
         "GameEventBaseSetting.Product", "GameEventMetadata.Product", "LoadingTips.Product", "Location.Product",
-        "LocatorData.Product", "PouchActorInfo.Product", "XLinkPropertyTableList.Product", "Tag.Product"
+        "LocatorData.Product", "PouchActorInfo.Product", "XLinkPropertyTableList.Product", "Tag.Product", "TagDef.Product"
     ]
 
     # Initialize changelog dictionary with sections for each type
@@ -204,7 +256,6 @@ def generate_changelogs(folder_path, output_path):
                 with open(master_file_path, 'r') as file:
                     master_data = json.load(file)
                 
-                # Generate changelog
                 file_changelog = generate_changelog_for_json(json_data, master_data)  # You need to implement this function
                 
                 # Update the main changelog dictionary with the changes for this type
@@ -233,7 +284,12 @@ def generate_changelogs(folder_path, output_path):
                 print("Version detected:", most_similar_master[:-5])
                 
                 # Generate changelog
-                file_changelog = generate_changelog_for_yaml(yaml_file_path, master_file_path)
+                # Generate changelog
+                if type_name == "TagDef.Product":
+                    generate_changelog_func = generate_changelog_for_tagdef
+                else:
+                    generate_changelog_func = generate_changelog_for_yaml
+                file_changelog = generate_changelog_func(yaml_file_path, master_file_path)
                 
                 # Update the main changelog dictionary with the changes for this type
                 changelog[type_name]["Added blocks"].extend(file_changelog["Added blocks"])
@@ -257,7 +313,7 @@ def apply_changelogs(changelog_dirs, version, output_dir):
         "ActorInfo.Product", "AttachmentActorInfo.Product", "Challenge.Product", "EnhancementMaterialInfo.Product",
         "EventPlayEnvSetting.Product", "EventSetting.Product", "GameActorInfo.Product", "GameAnalyzedEventInfo.Product",
         "GameEventBaseSetting.Product", "GameEventMetadata.Product", "LoadingTips.Product", "Location.Product",
-        "LocatorData.Product", "PouchActorInfo.Product", "XLinkPropertyTableList.Product", "Tag.Product"
+        "LocatorData.Product", "PouchActorInfo.Product", "XLinkPropertyTableList.Product", "Tag.Product", "TagDef.Product"
     ]
     # Iterate over all provided directories
     for changelog_dir in changelog_dirs:
@@ -314,7 +370,6 @@ def apply_changelogs(changelog_dirs, version, output_dir):
                     with open(output_file_path, 'w') as f:
                         json.dump(master_data, f, indent=4)
                 else:
-                
                     # Load the master file if it exists, otherwise start with an empty list
                     if os.path.exists(output_file_path):
                         with open(output_file_path, 'r') as f:
@@ -341,29 +396,96 @@ def apply_changelogs(changelog_dirs, version, output_dir):
                     # Process the master data and the temporary data
                     master_blocks = {}
                     temp_blocks = {}
-                    for data, blocks in [(master_data, master_blocks), (temp_data, temp_blocks)]:
-                        block = []
-                        for line in data:
-                            block.append(line)
-                            if "__RowId:" in line:
-                                row_id = line.split("__RowId:")[1].strip()
-                                blocks[row_id] = block
-                                block = []
 
-                    # Replace the blocks in the master data with the blocks from the temporary data
-                    for row_id, block in temp_blocks.items():
-                        if row_id in master_blocks:
-                            master_blocks[row_id] = block
+                    if recognized_type == "TagDef.Product":
+                        for data, blocks in [(master_data, master_blocks), (changes["Edited blocks"], temp_blocks)]:
+                            data_str = ''.join(data)
+                            blocks_str = re.findall(r'{.*?}', data_str, re.DOTALL)
+                            for block_str in blocks_str:
+                                display_name_match = re.search(r'DisplayName: (.*?),', block_str)
+                                if display_name_match:
+                                    display_name = display_name_match.group(1)
+                                    blocks[display_name] = block_str.split('\n')
 
-                    # Save the updated master data
-                    with open(output_file_path, 'w') as f:
-                        for block in master_blocks.values():
-                            f.writelines(block)
+                        # Replace the blocks in the master data with the blocks from the temporary data
+                        for display_name, block in temp_blocks.items():
+                            if display_name in master_blocks:
+                                master_blocks[display_name] = block
 
-                    # Append the added blocks to the end of the file
-                    with open(output_file_path, 'a') as f:
-                        for block_str in changes["Added blocks"]:
-                            f.write(block_str)
+                            # Convert the blocks in the master_blocks dictionary to a list and sort it by DisplayOrder
+                            master_blocks_list = sorted(master_blocks.values(), key=lambda block: int(re.search(r'DisplayOrder: (\d+),', ''.join(block)).group(1)))
+
+                            # Adjust the DisplayOrder values to ensure uniqueness
+                            for i, block in enumerate(master_blocks_list):
+                                block_str = ''.join(block)
+                                block_str = re.sub(r'(DisplayOrder: )(\d+)', lambda m: m.group(1) + str(i), block_str)
+                                master_blocks_list[i] = block_str.split('\n')
+
+                            # Save the updated master data
+                            with open(output_file_path, 'w') as f:
+                                f.writelines('\n'.join('- ' + ''.join(block) for block in master_blocks_list))
+
+                            added_blocks = []
+
+                            # Process the added blocks
+                            for block_str in changes["Added blocks"]:
+                                # Remove leading '- ' from the block string
+                                if block_str.startswith('- '):
+                                    block_str = block_str[2:]
+                                # Extract the DisplayName from the block string
+                                display_name_match = re.search(r'DisplayName: (.*?),', block_str)
+                                if display_name_match:
+                                    display_name = display_name_match.group(1)
+                                    # If a block with the same DisplayName already exists, replace it
+                                    if display_name in master_blocks:
+                                        master_blocks[display_name] = block_str.split('\n')
+                                    else:
+                                        # If not, add the new block to the added_blocks list
+                                        added_blocks.append(block_str)
+
+                            # Append the added blocks to the end of the file
+                            with open(output_file_path, 'a') as f:
+                                for block_str in added_blocks:
+                                    f.write('\n- ' + block_str)
+
+                            # Read the file again and adjust the DisplayOrder values
+                            with open(output_file_path, 'r') as f:
+                                lines = f.readlines()
+
+                            with open(output_file_path, 'w') as f:
+                                for i, line in enumerate(lines):
+                                    # Adjust the DisplayOrder value
+                                    line = re.sub(r'(DisplayOrder: )(\d+)', lambda m: m.group(1) + str(i), line)
+                                    f.write(line)
+
+                            with open(output_file_path, 'a') as f:
+                                f.writelines("\n")
+                        
+                    else:
+                        for data, blocks in [(master_data, master_blocks), (temp_data, temp_blocks)]:
+                            block = []
+                            for line in data:
+                                block.append(line)
+                                if "__RowId:" in line:
+                                    row_id = line.split("__RowId:")[1].strip()
+                                    blocks[row_id] = block
+                                    block = []
+
+                        # Replace the blocks in the master data with the blocks from the temporary data
+                        for row_id, block in temp_blocks.items():
+                            if row_id in master_blocks:
+                                master_blocks[row_id] = block
+
+                        # Save the updated master data
+                        with open(output_file_path, 'w') as f:
+                            for block in master_blocks.values():
+                                f.writelines(block)
+
+                        # Append the added blocks to the end of the file
+                        with open(output_file_path, 'a') as f:
+                            for block_str in changes["Added blocks"]:
+                                f.write(block_str)
+
         # After all changelogs have been processed, process each output file accordingly
         for output_file in glob.glob(os.path.join(output_dir, '*')):
             if output_file.endswith('.json'):
@@ -380,13 +502,13 @@ def apply_changelogs(changelog_dirs, version, output_dir):
                 compressor._CompressFile(updated_byml_path, output_dir=output_dir, level=16, with_dict=True)
 
                 # Remove the uncompressed files
-                os.remove(output_file)
+                #os.remove(output_file)
                 os.remove(updated_byml_path)
 
 # Set up the argument parser
 parser = argparse.ArgumentParser(description='Generate and apply changelogs for RSDB')
 parser.add_argument('--generate-changelog', help='Path to the folder containing .byml.zs files to generate changelogs.')
-parser.add_argument('--apply-changelogs', nargs='+', help='Paths to the folders containing .json changelogs to apply.')
+parser.add_argument('--apply-changelogs', help='Paths to the folders containing .json changelogs to apply.')
 parser.add_argument('--output', help='Path to the output directory for the generated changelog or for the generated RSDB files.')
 parser.add_argument('--version', help='Version of TOTK for which to generate RSDB files (example: 121).')
 
@@ -401,4 +523,5 @@ if args.apply_changelogs:
     if not (args.version and args.output):
         print("Error: --version and --output must be provided when using --apply-changelogs")
         sys.exit(1)
-    apply_changelogs(args.apply_changelogs, args.version, args.output)
+    changelog_paths = args.apply_changelogs.split('|')
+    apply_changelogs(changelog_paths, args.version, args.output)
