@@ -7,6 +7,9 @@ dist/
 *.pyc
 *.zs
 *.bat
+*.sh
 *.yaml
 *.json
 *.spec
+*.exe
+TagProductTool.py

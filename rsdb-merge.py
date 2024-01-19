@@ -4,8 +4,55 @@ import glob
 import argparse
 import subprocess
 import sys
+
+def get_app_data_path():
+    if os.name == 'nt':  # Windows
+        return os.environ.get('LOCALAPPDATA')
+    else:  # Linux and macOS
+        return os.environ.get('XDG_DATA_HOME', os.path.join(os.path.expanduser('~'), '.local', 'share'))
+
+def check_config():
+    app_data_path = get_app_data_path()
+    config_path = os.path.join(app_data_path, 'TotK')
+    config_json_path = os.path.join(config_path, 'config.json')
+    os.makedirs(config_path, exist_ok=True)
+    # Check if config.json exists
+    if not os.path.exists(config_json_path):
+        while True:
+            # Prompt the user for the RomFS Dump Path
+            game_path = input("Please enter the path to a RomFS Dump: ")
+
+            # Check for the existence of Pack\ZsDic.pack.zs
+            zs_dic_path = os.path.join(game_path, 'Pack', 'ZsDic.pack.zs')
+            if os.path.exists(zs_dic_path):
+                break  # Exit the loop if the path is valid
+            else:
+                print(
+                      "\nOops! It seems like the magical ink in our quill has run dry, and\n"
+                      "the enchanted parchment is refusing to accept your game dump.\n\n"
+                      "Remember, even magical commands require the 'Pack/ZsDic.pack.zs' file\n"
+                      "and a sprinkle of pixie dust to work properly.\n\n"
+                      "Please make sure you're using a wand-compatible keyboard and try\n"
+                      "casting the spell again with the correct incantations. If problems\n"
+                      "persist, consult the nearest wise wizard for debugging assistance.\n")
+
+        # Create the config.json file
+        with open(config_json_path, 'w') as f:
+            json.dump({"GamePath": game_path}, f)
+    else:
+        # Load the config.json file
+        with open(config_json_path, 'r') as f:
+            config = json.load(f)
+
+        # Check for the existence of Pack\ZsDic.pack.zs
+        game_path = config["GamePath"]
+        zs_dic_path = os.path.join(game_path, 'Pack', 'ZsDic.pack.zs')
+        if not os.path.exists(zs_dic_path):
+            print("Invalid game dump, missing ZsDic.pack.zs")
+            sys.exit()
+
+check_config()
 from zstd import Zstd
-import yaml
 
 def get_correct_path(relative_path):
     try:
@@ -26,8 +73,13 @@ def get_correct_path(relative_path):
 current_dir = os.path.dirname(os.path.abspath(__file__))
 dist_path = "dist"
 dist_path = get_correct_path(dist_path)
-byml_to_yaml_exe = os.path.join(dist_path, "byml-to-yaml.exe")
-tag_product_exe = os.path.join(dist_path, "TagProductTool.exe")
+if os.name == 'nt':  # Windows
+    byml_to_yaml = os.path.join(dist_path, "byml-to-yaml.exe")
+    tag_product = os.path.join(dist_path, "TagProductTool.exe")
+else:  # Linux and macOS
+    byml_to_yaml = os.path.join(dist_path, "byml-to-yaml")
+    tag_product = os.path.join(dist_path, "TagProductTool")
+
 master_dir = "master"
 master_dir = get_correct_path(master_dir)
 
@@ -256,7 +308,7 @@ def generate_changelogs(folder_path, output_path):
         if type_name == "Tag.Product":
             # Use TagProductTool.exe for "Tag.Product" type
             json_file_path = file_path + '.json'
-            process = subprocess.run([tag_product_exe, os.path.join(folder_path, file_name), folder_path], capture_output=True, text=True)
+            process = subprocess.run([tag_product, os.path.join(folder_path, file_name), folder_path], capture_output=True, text=True)
             if "INFO: Conversion Complete." in process.stdout:
                 # Load the JSON data into a dictionary
                 with open(json_file_path, 'r') as file:
@@ -288,7 +340,7 @@ def generate_changelogs(folder_path, output_path):
             # Decompress and convert to YAML
             decompressor = Zstd()
             decompressor.Decompress(file_path, output_dir=folder_path, with_dict=True, no_output=False)
-            process = subprocess.run([byml_to_yaml_exe, "to-yaml", decompressed_file_path, "-o", yaml_file_path], capture_output=True, text=True)
+            process = subprocess.run([byml_to_yaml, "to-yaml", decompressed_file_path, "-o", yaml_file_path], capture_output=True, text=True)
             if "Command executed successfully" in process.stdout:
                 # Find the most similar master file
                 most_similar_master = find_most_similar_master(yaml_file_path)
@@ -561,13 +613,13 @@ def apply_changelogs(changelog_dirs, version, output_dir):
         # After all changelogs have been processed, process each output file accordingly
         for output_file in glob.glob(os.path.join(output_dir, '*')):
             if output_file.endswith('.json'):
-                # Process "Tag.Product" type with tag_product_exe
-                subprocess.run([tag_product_exe, output_file, output_dir], capture_output=True, text=True)
+                # Process "Tag.Product" type with TagProductTool
+                subprocess.run([tag_product, output_file, output_dir], capture_output=True, text=True)
                 os.remove(output_file)
             elif output_file.endswith('.yaml'):
                 # Convert other types to BYML, compress them, and delete the YAML files
                 updated_byml_path = output_file[:-4] + 'byml'
-                subprocess.call([byml_to_yaml_exe, 'to-byml', output_file, '-o', updated_byml_path])
+                subprocess.call([byml_to_yaml, 'to-byml', output_file, '-o', updated_byml_path])
                 
                 # Compress the BYML file
                 compressor = Zstd()
