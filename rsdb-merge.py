@@ -74,7 +74,7 @@ def count_common_blocks(file_content, master_content):
     identical_block_count = len(file_blocks & master_blocks)
     return identical_block_count
 
-def count_common_blocks_for_tagdef(file_content, master_content):
+def count_common_blocks_misc(file_content, master_content):
     # Split the file content into blocks and strip any leading or trailing whitespaces
     file_blocks = set(block.strip() for block in file_content.split('}\n'))
     master_blocks = set(block.strip() for block in master_content.split('}\n'))
@@ -91,8 +91,8 @@ def find_most_similar_master(compared_file):
     compared_file_parts = os.path.basename(compared_file).split('.')
     compared_file_prefix = '.'.join(compared_file_parts[:2])
 
-    if compared_file_prefix == "TagDef.Product":
-        count_common_blocks_func = count_common_blocks_for_tagdef
+    if compared_file_prefix in ["TagDef.Product", "GameSafetySetting.Product"]:
+        count_common_blocks_func = count_common_blocks_misc
     else:
         count_common_blocks_func = count_common_blocks
 
@@ -141,7 +141,7 @@ def generate_changelog_for_json(json_data, master_data):
 
 import re
 
-def generate_changelog_for_tagdef(file_path, master_file_path):
+def generate_changelog_misc(file_path, master_file_path):
     # Load the file and master data
     with open(file_path, 'r') as file:
         file_data = [block + '}' for block in file.read().split('}\n') if block]
@@ -153,15 +153,26 @@ def generate_changelog_for_tagdef(file_path, master_file_path):
         "Edited blocks": []
     }
 
+    # Determine the identifier based on the file name
+    file_name = os.path.basename(file_path)
+    if file_name.startswith("TagDef"):
+        identifier = 'DisplayName'
+    elif file_name.startswith("GameSafetySetting"):
+        identifier = 'NameHash'
+    else:
+        print(f"Unrecognized file name: {file_name}")
+        return None
+
     # Process each block in file_data
     for block in file_data:
-        display_name_match = re.search(r'DisplayName: (.*?),', block)
-        if display_name_match:
-            display_name = display_name_match.group(1)
-            master_block = next((block for block in master_data if 'DisplayName: ' + display_name + ',' in block), None)
+        match = re.search(f'{identifier}: (.*?)[,}}]', block)
+        if match:
+            value = match.group(1)
+            master_block = next((block for block in master_data if re.search(f'{identifier}: {value}[,}}]', block)), None)
             if master_block is None:
                 # Block is added
                 changelog["Added blocks"].append(block)
+                print(block)
             else:
                 # Sort the lines in the blocks before comparison
                 block_sorted = '\n'.join(sorted(block.split('\n')))
@@ -169,6 +180,7 @@ def generate_changelog_for_tagdef(file_path, master_file_path):
                 if block_sorted.strip() != master_block_sorted.strip():
                     # Block is edited
                     changelog["Edited blocks"].append(block)
+                    print(block)
 
     return changelog
 
@@ -217,8 +229,9 @@ def generate_changelogs(folder_path, output_path):
     recognized_types = [
         "ActorInfo.Product", "AttachmentActorInfo.Product", "Challenge.Product", "EnhancementMaterialInfo.Product",
         "EventPlayEnvSetting.Product", "EventSetting.Product", "GameActorInfo.Product", "GameAnalyzedEventInfo.Product",
-        "GameEventBaseSetting.Product", "GameEventMetadata.Product", "LoadingTips.Product", "Location.Product",
-        "LocatorData.Product", "PouchActorInfo.Product", "XLinkPropertyTableList.Product", "Tag.Product", "TagDef.Product"
+        "GameEventBaseSetting.Product", "GameEventMetadata.Product", "GameSafetySetting.Product", "LoadingTips.Product",
+        "Location.Product", "LocatorData.Product", "PouchActorInfo.Product", "Tag.Product", "TagDef.Product",
+        "XLinkPropertyTable.Product", "XLinkPropertyTableList.Product"
     ]
 
     # Initialize changelog dictionary with sections for each type
@@ -284,9 +297,8 @@ def generate_changelogs(folder_path, output_path):
                 print("Version detected:", most_similar_master[:-5])
                 
                 # Generate changelog
-                # Generate changelog
-                if type_name == "TagDef.Product":
-                    generate_changelog_func = generate_changelog_for_tagdef
+                if type_name in ["TagDef.Product", "GameSafetySetting.Product"]:
+                    generate_changelog_func = generate_changelog_misc
                 else:
                     generate_changelog_func = generate_changelog_for_yaml
                 file_changelog = generate_changelog_func(yaml_file_path, master_file_path)
@@ -312,8 +324,9 @@ def apply_changelogs(changelog_dirs, version, output_dir):
     recognized_types = [
         "ActorInfo.Product", "AttachmentActorInfo.Product", "Challenge.Product", "EnhancementMaterialInfo.Product",
         "EventPlayEnvSetting.Product", "EventSetting.Product", "GameActorInfo.Product", "GameAnalyzedEventInfo.Product",
-        "GameEventBaseSetting.Product", "GameEventMetadata.Product", "LoadingTips.Product", "Location.Product",
-        "LocatorData.Product", "PouchActorInfo.Product", "XLinkPropertyTableList.Product", "Tag.Product", "TagDef.Product"
+        "GameEventBaseSetting.Product", "GameEventMetadata.Product", "GameSafetySetting.Product", "LoadingTips.Product",
+        "Location.Product", "LocatorData.Product", "PouchActorInfo.Product", "Tag.Product", "TagDef.Product",
+        "XLinkPropertyTable.Product", "XLinkPropertyTableList.Product"
     ]
     # Iterate over all provided directories
     for changelog_dir in changelog_dirs:
@@ -460,7 +473,57 @@ def apply_changelogs(changelog_dirs, version, output_dir):
 
                             with open(output_file_path, 'a') as f:
                                 f.writelines("\n")
-                        
+
+                    elif recognized_type == "GameSafetySetting.Product":
+                        for data, blocks in [(master_data, master_blocks), (changes["Edited blocks"], temp_blocks)]:
+                            data_str = ''.join(data)
+                            blocks_str = re.findall(r'{.*?}', data_str, re.DOTALL)
+                            for block_str in blocks_str:
+                                name_hash_match = re.search(r'NameHash: (.*?)[,}]', block_str)
+                                if name_hash_match:
+                                    name_hash = name_hash_match.group(1)
+                                    blocks[name_hash] = block_str.split('\n')
+
+                        # Replace the blocks in the master data with the blocks from the temporary data
+                        for name_hash, block in temp_blocks.items():
+                            if name_hash in master_blocks:
+                                master_blocks[name_hash] = block
+
+                        # Save the updated master data
+                        with open(output_file_path, 'w') as f:
+                            for i, block in enumerate(master_blocks.values()):
+                                block_str = "- " + '\n'.join(block)
+                                # If it's not the last block, add a newline at the end
+                                if i < len(master_blocks) - 1:
+                                    block_str += "\n"
+                                f.writelines(block_str)
+
+                        added_blocks = []
+
+                        # Process the added blocks
+                        for block_str in changes["Added blocks"]:
+                            # Remove leading '- ' from the block string
+                            if block_str.startswith('- '):
+                                block_str = block_str[2:]
+                            # Extract the name hash from the block string
+                            name_hash_match = re.search(r'NameHash: (.*?)[,}]', block_str)
+                            if name_hash_match:
+                                name_hash = name_hash_match.group(1)
+                                # If a block with the same name hash already exists, replace it
+                                if name_hash in master_blocks:
+                                    master_blocks[name_hash] = block_str.split('\n')
+                                else:
+                                    # If not, add the new block to the added_blocks list
+                                    added_blocks.append(block_str)
+
+                        # Append the added blocks to the end of the file
+                        with open(output_file_path, 'a') as f:
+                            for block_str in added_blocks:
+                                f.write('\n- ' + block_str)
+
+                        with open(output_file_path, 'a') as f:
+                            f.writelines("\n")
+
                     else:
                         for data, blocks in [(master_data, master_blocks), (temp_data, temp_blocks)]:
                             block = []
