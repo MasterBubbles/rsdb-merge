@@ -4,6 +4,7 @@ import glob
 import argparse
 import subprocess
 import sys
+import re
 
 def get_app_data_path():
     if os.name == 'nt':  # Windows
@@ -119,14 +120,6 @@ def find_most_similar_master_json(compared_file):
         return None
 
 def count_common_blocks(file_content, master_content):
-    # Split the file content into blocks
-    file_blocks = set(file_content.split("__RowId:"))
-    master_blocks = set(master_content.split("__RowId:"))
-    # Count the number of identical blocks
-    identical_block_count = len(file_blocks & master_blocks)
-    return identical_block_count
-
-def count_common_blocks_misc(file_content, master_content):
     # Split the file content into blocks and strip any leading or trailing whitespaces
     file_blocks = set(block.strip() for block in file_content.split('\n-') if block)
     master_blocks = set(block.strip() for block in master_content.split('\n-') if block)
@@ -143,11 +136,6 @@ def find_most_similar_master(compared_file):
     compared_file_parts = os.path.basename(compared_file).split('.')
     compared_file_prefix = '.'.join(compared_file_parts[:2])
 
-    if compared_file_prefix in ["TagDef.Product", "GameSafetySetting.Product", "RumbleCall.Product", "UIScreen.Product"]:
-        count_common_blocks_func = count_common_blocks_misc
-    else:
-        count_common_blocks_func = count_common_blocks
-
     # Filter the master_files based on the prefix
     master_files = [file for file in master_files if file.startswith(compared_file_prefix) and file.endswith('.yaml')]
     
@@ -161,7 +149,7 @@ def find_most_similar_master(compared_file):
         master_path = os.path.join(master_dir, master_file)
         with open(master_path, 'r', encoding='utf-8') as master:
             master_content = master.read()
-            common_block_count = count_common_blocks_func(file1_content, master_content)
+            common_block_count = count_common_blocks(file1_content, master_content)
             if common_block_count > best_match_count:
                 best_match_count = common_block_count
                 most_similar_master = master_file
@@ -191,14 +179,12 @@ def generate_changelog_for_json(json_data, master_data):
 
     return changelog
 
-import re
-
-def generate_changelog_misc(file_path, master_file_path):
+def generate_changelog_for_yaml(file_path, master_file_path):
     # Load the file and master data
-    with open(file_path, 'r') as file:
-        file_data = ['-' + block for block in file.read().split('\n-') if block]
-    with open(master_file_path, 'r') as master_file:
-        master_data = ['-' + block for block in master_file.read().split('\n-') if block]
+    with open(file_path, 'r', encoding='utf-8') as file:
+        file_data = file.read().strip().split('\n-')
+    with open(master_file_path, 'r', encoding='utf-8') as master_file:
+        master_data = master_file.read().strip().split('\n-')
 
     changelog = {
         "Added blocks": [],
@@ -216,65 +202,48 @@ def generate_changelog_misc(file_path, master_file_path):
     elif file_name.startswith("UIScreen"):
         identifier = ' Name'
     else:
-        print(f"Unrecognized file name: {file_name}")
-        return None
+        identifier = '__RowId'
+
+    # Create a dictionary that maps each value to its corresponding master_block
+    master_blocks = {}
+    for block in master_data:
+        if identifier == '__RowId':
+            # Special handling for __RowId where the identifier is at the end of the block
+            match = re.search(rf'{identifier}: (\S+)', block)
+        else:
+            match = re.search(rf'{identifier}: (.*?)(,|}}|\n)', block)
+        if match:
+            value = match.group(1).strip()
+            master_blocks[value] = block
 
     # Process each block in file_data
     for block in file_data:
-        match = re.search(f'{identifier}: (.*?)(,|}}|\n)', block)
+        if identifier == '__RowId':
+            # Special handling for __RowId where the identifier is at the end of the block
+            match = re.search(rf'{identifier}: (\S+)', block)
+        else:
+            match = re.search(rf'{identifier}: (.*?)(,|}}|\n)', block)
         if match:
-            value = match.group(1)
-            master_block = next((block for block in master_data if re.search(f'{identifier}: {value}[,|}}|\n]', block)), None)
+            value = match.group(1).strip()
+            master_block = master_blocks.get(value)
             if master_block is None:
                 # Block is added
+                if not block.startswith('-'):
+                    block = '-' + block
+                if not block.endswith('\n'):
+                    block += "\n"
                 changelog["Added blocks"].append(block)
             else:
-                # Sort the lines in the blocks before comparison
-                block_sorted = '\n'.join(sorted(block.split('\n')))
-                master_block_sorted = '\n'.join(sorted(master_block.split('\n')))
-                if block_sorted.strip() != master_block_sorted.strip():
+                # Convert the lines in the blocks to sets and compare the sets
+                file_block_set = set(block.split('\n'))
+                master_block_set = set(master_block.split('\n'))
+                if file_block_set != master_block_set:
                     # Block is edited
+                    if not block.startswith('-'):
+                        block = '-' + block
+                    if not block.endswith('\n'):
+                        block += "\n"
                     changelog["Edited blocks"].append(block)
-
-    return changelog
-
-def generate_changelog_for_yaml(yaml_file_path, master_file_path):
-    with open(yaml_file_path, 'r', encoding='utf-8') as file:
-        yaml_data = file.readlines()
-    
-    with open(master_file_path, 'r', encoding='utf-8') as file:
-        master_data = file.readlines()
-    
-    changelog = {
-        "Added blocks": [],
-        "Edited blocks": []
-    }
-
-    # Create a dictionary to map __RowId lines to blocks in master_data
-    master_blocks = {}
-    block_master = []
-    for line in master_data:
-        block_master.append(line)
-        if "__RowId:" in line:
-            row_id = line.split("__RowId:")[1].strip()  # Get the part of the line after "__RowId:"
-            master_blocks[row_id] = block_master
-            block_master = []
-
-    # Process each block in yaml_data
-    block_yaml = []
-    for line in yaml_data:
-        block_yaml.append(line)
-        if "__RowId:" in line:
-            row_id = line.split("__RowId:")[1].strip()  # Get the part of the line after "__RowId:"
-            if row_id in master_blocks:
-                # Compare the entire block, not just the __RowId line
-                if ''.join(block_yaml) != ''.join(master_blocks[row_id]):
-                    # Block is edited
-                    changelog["Edited blocks"].append(''.join(block_yaml))
-            else:
-                # Block is added
-                changelog["Added blocks"].append(''.join(block_yaml))
-            block_yaml = []  # Reset block for the next one
 
     return changelog
 
@@ -351,11 +320,7 @@ def generate_changelogs(folder_path, output_path):
                 print("Version detected:", most_similar_master[:-5])
                 
                 # Generate changelog
-                if type_name in ["TagDef.Product", "GameSafetySetting.Product", "RumbleCall.Product", "UIScreen.Product"]:
-                    generate_changelog_func = generate_changelog_misc
-                else:
-                    generate_changelog_func = generate_changelog_for_yaml
-                file_changelog = generate_changelog_func(yaml_file_path, master_file_path)
+                file_changelog = generate_changelog_for_yaml(yaml_file_path, master_file_path)
                 
                 # Update the main changelog dictionary with the changes for this type
                 changelog[type_name]["Added blocks"].extend(file_changelog["Added blocks"])
@@ -447,19 +412,6 @@ def apply_changelogs(changelog_dirs, version, output_dir):
                     else:
                         master_data = []
 
-                    # Create a temporary YAML file for the edited blocks
-                    temp_yaml_path = os.path.join(output_dir, 'temp.yaml')
-                    with open(temp_yaml_path, 'w', encoding='utf-8') as f:
-                        for block_str in changes["Edited blocks"]:
-                            f.write(block_str)
-
-                    # Load the temporary YAML file
-                    with open(temp_yaml_path, 'r', encoding='utf-8') as f:
-                        temp_data = f.readlines()
-
-                    # Remove the temporary YAML file
-                    os.remove(temp_yaml_path)
-
                     # Process the master data and the temporary data
                     master_blocks = {}
                     temp_blocks = {}
@@ -528,35 +480,39 @@ def apply_changelogs(changelog_dirs, version, output_dir):
                             with open(output_file_path, 'a') as f:
                                 f.writelines("\n")
 
-                    elif recognized_type in ["GameSafetySetting.Product", "RumbleCall.Product", "UIScreen.Product"]:
-                        if recognized_type == "GameSafetySetting.Product":
-                            identifier = 'NameHash'
-                        elif recognized_type == "RumbleCall.Product":
-                            identifier = ',Name'
-                        elif recognized_type == "UIScreen.Product":
-                            identifier = ' Name'
+                    else:
+                        # Define a dictionary that maps recognized_types to a corresponding regular expression
+                        regex_dict = {
+                            "GameSafetySetting.Product": r'!u 0x(.*?)(,|\n)',
+                            "RumbleCall.Product": r',Name: (.*?)(})',
+                            "UIScreen.Product": r'  Name: (.*?)(\n)',
+                            "default": r'__RowId: (\S+)'
+                        }
+
+                        # Use the appropriate regular expression for each recognized_type
                         for data, blocks in [(master_data, master_blocks), (changes["Edited blocks"], temp_blocks)]:
                             data_str = ''.join(data)
                             blocks_str = re.findall(r'-.*?(?=\n-|$)', data_str, re.DOTALL)
                             for block_str in blocks_str:
-                                name_match = re.search(f'{identifier}: (.*?)[,|}}|\n]', block_str)
+                                regex = regex_dict.get(recognized_type, regex_dict["default"])
+                                name_match = re.search(regex, block_str)
                                 if name_match:
                                     name = name_match.group(1)
-                                    blocks[name] = block_str.split('\n')
+                                    if not block_str.endswith('\n'):
+                                        block_str += "\n"
+                                    blocks[name] = block_str
 
                         # Replace the blocks in the master data with the blocks from the temporary data
                         for name, block in temp_blocks.items():
-                            if name in master_blocks:
-                                master_blocks[name] = block
+                            master_blocks[name] = block
 
                         # Save the updated master data
-                        with open(output_file_path, 'w') as f:
+                        with open(output_file_path, 'w', encoding='utf-8') as f:
                             for i, block in enumerate(master_blocks.values()):
-                                block_str = '\n'.join(block)
+                                block_str = block
                                 block_str = block_str.replace("- -", "-").replace("--", "-")
-                                # If it's not the last block, add a newline at the end
-                                if i < len(master_blocks) - 1:
-                                    block_str += "\n"
+                                if i != 0 and not block_str.startswith('\n'):
+                                    block_str = '\n' + block_str
                                 f.writelines(block_str)
 
                         added_blocks = []
@@ -566,49 +522,23 @@ def apply_changelogs(changelog_dirs, version, output_dir):
                             # Remove leading '- ' from the block string
                             if block_str.startswith('- '):
                                 block_str = block_str[2:]
-                            # Extract the name hash from the block string
-                            name_hash_match = re.search(f'{identifier}: (.*?)[,|}}|\n]', block_str)
-                            if name_hash_match:
-                                name_hash = name_hash_match.group(1)
+                            name_match = re.search(regex, block_str)
+                            if name_match:
+                                name_hash = name_match.group(1)
                                 # If a block with the same name hash already exists, replace it
                                 if name_hash in master_blocks:
-                                    master_blocks[name_hash] = block_str.split('\n')
+                                    master_blocks[name_hash] = block_str
                                 else:
                                     # If not, add the new block to the added_blocks list
                                     added_blocks.append(block_str)
 
                         # Append the added blocks to the end of the file
-                        with open(output_file_path, 'a') as f:
+                        with open(output_file_path, 'a', encoding='utf-8') as f:
                             for block_str in added_blocks:
                                 f.write('\n- ' + block_str)
 
-                        with open(output_file_path, 'a') as f:
-                            f.writelines("\n")
-
-                    else:
-                        for data, blocks in [(master_data, master_blocks), (temp_data, temp_blocks)]:
-                            block = []
-                            for line in data:
-                                block.append(line)
-                                if "__RowId:" in line:
-                                    row_id = line.split("__RowId:")[1].strip()
-                                    blocks[row_id] = block
-                                    block = []
-
-                        # Replace the blocks in the master data with the blocks from the temporary data
-                        for row_id, block in temp_blocks.items():
-                            if row_id in master_blocks:
-                                master_blocks[row_id] = block
-
-                        # Save the updated master data
-                        with open(output_file_path, 'w', encoding='utf-8') as f:
-                            for block in master_blocks.values():
-                                f.writelines(block)
-
-                        # Append the added blocks to the end of the file
                         with open(output_file_path, 'a', encoding='utf-8') as f:
-                            for block_str in changes["Added blocks"]:
-                                f.write(block_str)
+                            f.writelines("\n")
 
         # After all changelogs have been processed, process each output file accordingly
         for output_file in glob.glob(os.path.join(output_dir, '*')):
