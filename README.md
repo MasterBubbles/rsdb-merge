@@ -1,23 +1,5 @@
 # rsdb-merge [![Downloads](https://img.shields.io/github/downloads/MasterBubbles/rsdb-merge/total)](https://github.com/MasterBubbles/rsdb-merge/releases)
-Merge some of the RSDB file types from TOTK
-
-Supported RSDB files:
-- ActorInfo.Product
-- AttachmentActorInfo.Product
-- Challenge.Product
-- EnhancementMaterialInfo.Product
-- EventPlayEnvSetting.Product
-- EventSetting.Product
-- GameActorInfo.Product
-- GameAnalyzedEventInfo.Product
-- GameEventBaseSetting.Product
-- GameEventMetadata.Product
-- LoadingTips.Product
-- Location.Product
-- LocatorData.Product
-- PouchActorInfo.Product
-- Tag.Product
-- XLinkPropertyTableList.Product
+This tool can merge all RSDB file types from TOTK (all the files located in `romfs\RSDB`)
 
 ## Usage
 
@@ -29,11 +11,15 @@ After generating a changelog, rename it to anything you want, like "ModName_RSDB
 
 Once you have all json changelogs from each of your mods containing RSDB edits, place them all in the same folder (preferably a new empty folder) and use this command:
 
-`rsdb-merge.exe --apply-changelogs "PATH_TO_FOLDER_CONTAINING_JSONS" --output "PATH_TO_WHERE_YOU_WANT_RSDB_FILES_GENERATED" --version 121`
+`rsdb-merge.exe --apply-changelogs "C:\PATH\TO\FOLDER_CONTAINING_JSONS" --output "C:\PATH\TO\WHERE_YOU_WANT_RSDB_FILES_GENERATED" --version 121`
 
 This second command will use all json changelogs to merge the edits and generate RSDB files for version 1.2.1 in the output folder you choose (you can change `--version 121` to generate merged RSDB files for any version you want)
 
 The priority works with the alphanumerical order of the json changelogs' file names. So for example if a.json and b.json both edit the same blocks of data, the edit from b.json will overwrite it (this is only for blocks that are edited and not blocks that are added).
+
+Additionally, you have the option of using an array of paths for applying changelogs. For example, if you have several mod folders that each contain a rsdb.json changelog, you can use multiple folder paths separated with this line character: `|` :
+
+`rsdb-merge.exe --apply-changelogs "C:\path\to\mod1|C:\path\to\mod2|C:\path\to\mod3" --output "C:\PATH\TO\WHERE_YOU_WANT_RSDB_FILES_GENERATED" --version 121`
 
 ## Help
 ```
