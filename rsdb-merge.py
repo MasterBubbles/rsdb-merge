@@ -332,11 +332,15 @@ def generate_changelogs(folder_path, output_path):
                 print("There was an error when converting", decompressed_file_path, "to YAML")
                 sys.exit(1)
             
-    # Save the accumulated changelog to a single JSON file
-    changelog_file_path = os.path.join(output_path, "rsdb.json")
-    with open(changelog_file_path, 'w') as file:
-        json.dump(changelog, file, indent=4)
-    print("Changelog successfully generated at:", changelog_file_path)
+    # Check if the changelog is empty
+    if any(changelog[type_name]["Added blocks"] or changelog[type_name]["Edited blocks"] for type_name in recognized_types):
+        # Save the accumulated changelog to a single JSON file
+        changelog_file_path = os.path.join(output_path, "rsdb.json")
+        with open(changelog_file_path, 'w') as file:
+            json.dump(changelog, file, indent=4)
+        print("Changelog successfully generated at:", changelog_file_path)
+    else:
+        print("No changes detected. Changelog not generated.")
 
 def apply_changelogs(changelog_dirs, version, output_dir):
     # List of recognized types
