@@ -376,6 +376,9 @@ def apply_changelogs(changelog_dirs, version, output_dir):
                 master_file_path = os.path.join(master_dir, f'{recognized_type}.{version}.rstbl.yaml')
                 output_file_path = os.path.join(output_dir, f'{recognized_type}.{version}.rstbl.yaml')
 
+                # Create the output directory if it doesn't exist
+                os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
+
                 if recognized_type == "Tag.Product":
                     # Handle "Tag.Product" type as JSON
                     master_file_path = master_file_path.replace('.yaml', '.byml.zs.json')
