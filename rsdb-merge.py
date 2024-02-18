@@ -1,3 +1,6 @@
+import customtkinter as ctk
+from tkinter import messagebox
+import tkinter.filedialog as fd
 import tempfile
 import os
 import json
@@ -339,7 +342,7 @@ def generate_changelogs(folder_path, output_path):
         changelog_file_path = os.path.join(output_path, "rsdb.json")
         with open(changelog_file_path, 'w') as file:
             json.dump(changelog, file, indent=4)
-        print("Changelog successfully generated at:", changelog_file_path)
+        print("Changelog successfully generated")
     else:
         print("No changes detected. Changelog not generated.")
 
@@ -582,8 +585,10 @@ def process_and_merge_rsdb(mod_folder, version):
                 # Generate changelogs for each RSDB folder
                 generate_changelogs(rsdb_path, temp_dir)
                 # Rename rsdb.json to a numbered json file
-                os.rename(os.path.join(temp_dir, 'rsdb.json'), os.path.join(temp_dir, f'{changelog_index}.json'))
-                changelog_index += 1
+                temp_json_path = os.path.join(temp_dir, 'rsdb.json')
+                if os.path.exists(temp_json_path):
+                    os.rename(os.path.join(temp_dir, 'rsdb.json'), os.path.join(temp_dir, f'{changelog_index}.json'))
+                    changelog_index += 1
 
     # Create the merged RSDB folder
     merged_rsdb_folder = os.path.join(mod_folder, '00_MERGED_RSDB', 'romfs', 'RSDB')
@@ -598,27 +603,142 @@ def process_and_merge_rsdb(mod_folder, version):
             os.remove(os.path.join(root, name))
     os.rmdir(temp_dir)
 
-# Set up the argument parser
-parser = argparse.ArgumentParser(description='Generate and apply changelogs for RSDB')
-parser.add_argument('--version', help='Version of TOTK for which to generate RSDB files (example: 121).')
-parser.add_argument('--merge', help='Path to the folder containing all of your mods')
-parser.add_argument('--generate-changelog', help='Path to the folder containing .byml.zs files to generate a changelog.')
-parser.add_argument('--apply-changelogs', help='Paths to the folders containing .json changelogs to apply.')
-parser.add_argument('--output', help='Path to the output directory for the generated changelog or for the generated RSDB files.')
+# GUI Application
+class RSDBMergeApp(ctk.CTk):
+    def __init__(self):
+        super().__init__()
 
-# Parse the arguments
-args = parser.parse_args()
+        self.title('RSDB Merge Tool')
+        self.geometry('600x600')  # Adjusted for additional layout space
 
-if args.merge:
-    process_and_merge_rsdb(args.merge, args.version)
+        self.version_map = {
+            '1.0.0': 100,
+            '1.1.0': 110,
+            '1.1.1': 111,
+            '1.1.2': 112,
+            '1.2.0': 120,
+            '1.2.1': 121,
+        }
 
-if args.generate_changelog:
-    output_path = args.output if args.output else os.path.dirname(os.path.abspath(__file__))
-    generate_changelogs(args.generate_changelog, output_path)
+        # Version selection
+        ctk.CTkLabel(self, text="Version:").pack(pady=(10, 0))
+        self.version_var = ctk.StringVar(value="1.2.1")  # Default version set
+        self.version_dropdown = ctk.CTkComboBox(self, values=list(self.version_map.keys()), variable=self.version_var)
+        self.version_dropdown.pack(pady=10)
 
-if args.apply_changelogs:
-    if not (args.version and args.output):
-        print("Error: --version and --output must be provided when using --apply-changelogs")
-        sys.exit(1)
-    changelog_paths = args.apply_changelogs.split('|')
-    apply_changelogs(changelog_paths, args.version, args.output)
+        # Merge Mods section
+        self.setup_merge_mods_section()
+
+        # Generate Changelog section
+        self.setup_generate_changelog_section()
+
+        # Apply Changelogs section
+        self.setup_apply_changelogs_section()
+
+    def setup_section(self, frame, title, text_var, browse_command):
+        entry_frame = ctk.CTkFrame(frame)
+        entry_frame.pack(pady=5, fill='x', padx=20)
+        ctk.CTkLabel(entry_frame, text=title).pack(side='left', padx=(0, 10))
+        ctk.CTkEntry(entry_frame, textvariable=text_var, width=200).pack(side='left', fill='x', expand=True)
+        ctk.CTkButton(entry_frame, text="Browse", command=browse_command).pack(side='left', padx=(10, 0))
+
+    def setup_merge_mods_section(self):
+        merge_mods_frame = ctk.CTkFrame(self)
+        merge_mods_frame.pack(pady=10, fill='x')
+        ctk.CTkLabel(merge_mods_frame, text="Merge Mods").pack(pady=(0, 10))
+        self.mod_path_var = ctk.StringVar()
+        self.setup_section(merge_mods_frame, "Mod Folder:", self.mod_path_var, self.select_mod_path)
+        ctk.CTkButton(merge_mods_frame, text="Merge", command=self.merge_mods).pack(pady=10)
+
+    def setup_generate_changelog_section(self):
+        generate_changelog_frame = ctk.CTkFrame(self)
+        generate_changelog_frame.pack(pady=10, fill='x')
+        ctk.CTkLabel(generate_changelog_frame, text="Generate Changelog").pack(pady=(0, 10))
+        self.rsdb_folder_var = ctk.StringVar()
+        self.changelog_output_folder_var = ctk.StringVar()
+        self.setup_section(generate_changelog_frame, "RSDB Folder:", self.rsdb_folder_var, self.select_rsdb_folder)
+        self.setup_section(generate_changelog_frame, "Output Folder:", self.changelog_output_folder_var, self.select_changelog_output_folder)
+        ctk.CTkButton(generate_changelog_frame, text="Generate", command=self.generate_changelog).pack(pady=10)
+
+    def setup_apply_changelogs_section(self):
+        apply_changelogs_frame = ctk.CTkFrame(self)
+        apply_changelogs_frame.pack(pady=10, fill='x')
+        ctk.CTkLabel(apply_changelogs_frame, text="Apply Changelogs").pack(pady=(0, 10))
+        self.changelog_folder_var = ctk.StringVar()
+        self.output_rsdb_folder_var = ctk.StringVar()
+        self.setup_section(apply_changelogs_frame, "Changelog Folder:", self.changelog_folder_var, self.select_changelog_folder)
+        self.setup_section(apply_changelogs_frame, "Output RSDB Folder:", self.output_rsdb_folder_var, self.select_output_rsdb_folder)
+        ctk.CTkButton(apply_changelogs_frame, text="Apply", command=self.apply_changelogs).pack(pady=10)
+
+    def merge_mods(self):
+        # Convert the version to a string format expected by the function
+        version_int = self.version_map[self.version_var.get()]
+        process_and_merge_rsdb(self.mod_path_var.get(), version_int)
+        messagebox.showinfo("Action Complete", "Mods merging completed")
+
+    def generate_changelog(self):
+        generate_changelogs(self.rsdb_folder_var.get(), self.changelog_output_folder_var.get())
+        messagebox.showinfo("Action Complete", "Changelog generated")
+
+    def apply_changelogs(self):
+        # Convert the version to a string format expected by the function
+        version_str = str(self.version_map[self.version_var.get()])
+        apply_changelogs(self.changelog_folder_var.get(), version_str, self.output_rsdb_folder_var.get())
+        messagebox.showinfo("Action Complete", "RSDB files generated at" + self.changelog_folder_var.get())
+
+    def select_mod_path(self):
+        directory = fd.askdirectory()
+        if directory:
+            self.mod_path_var.set(directory)
+
+    def select_rsdb_folder(self):
+        directory = fd.askdirectory()
+        if directory:
+            self.rsdb_folder_var.set(directory)
+
+    def select_changelog_output_folder(self):
+        directory = fd.askdirectory()
+        if directory:
+            self.changelog_output_folder_var.set(directory)
+
+    def select_changelog_folder(self):
+        directory = fd.askdirectory()
+        if directory:
+            self.changelog_folder_var.set(directory)
+
+    def select_output_rsdb_folder(self):
+        directory = fd.askdirectory()
+        if directory:
+            self.output_rsdb_folder_var.set(directory)
+
+if __name__ == "__main__":
+    # Check if any arguments were provided
+    if len(sys.argv) == 1:
+        # No arguments were provided, launch the GUI
+        app = RSDBMergeApp()
+        app.mainloop()
+    else:
+        # Arguments were provided, proceed with the CLI version
+        parser = argparse.ArgumentParser(description='Generate and apply changelogs for RSDB')
+        parser.add_argument('--version', help='Version of TOTK for which to generate RSDB files (example: 121).')
+        parser.add_argument('--merge', help='Path to the folder containing all of your mods')
+        parser.add_argument('--generate-changelog', help='Path to the folder containing .byml.zs files to generate a changelog.')
+        parser.add_argument('--apply-changelogs', help='Paths to the folders containing .json changelogs to apply.')
+        parser.add_argument('--output', help='Path to the output directory for the generated changelog or for the generated RSDB files.')
+
+        # Parse the arguments
+        args = parser.parse_args()
+
+        if args.merge:
+            process_and_merge_rsdb(args.merge, args.version)
+
+        if args.generate_changelog:
+            output_path = args.output if args.output else os.path.dirname(os.path.abspath(__file__))
+            generate_changelogs(args.generate_changelog, output_path)
+
+        if args.apply_changelogs:
+            if not (args.version and args.output):
+                print("Error: --version and --output must be provided when using --apply-changelogs")
+                sys.exit(1)
+            changelog_paths = args.apply_changelogs.split('|')
+            apply_changelogs(changelog_paths, args.version, args.output)
