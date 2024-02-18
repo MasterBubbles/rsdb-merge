@@ -565,7 +565,7 @@ class RSDBMergeApp(ctk.CTk):
         super().__init__()
 
         self.title('RSDB Merge Tool 2.0')
-        self.geometry('600x600')  # Adjusted for additional layout space
+        self.geometry('600x580')  # Adjusted for additional layout space
         if os.name == 'nt':
             self.iconbitmap(images)
 
@@ -579,10 +579,22 @@ class RSDBMergeApp(ctk.CTk):
         }
 
         # Version selection
-        ctk.CTkLabel(self, text="Version:").pack(pady=(10, 0))
+        # Container frame to hold the label and dropdown side by side
+        container_frame = ctk.CTkFrame(self)
+        container_frame.pack(pady=10, fill='x')
+
+        # Use an inner frame to hold the label and dropdown, allowing for easier centering
+        inner_frame = ctk.CTkFrame(container_frame)
+        inner_frame.pack(pady=(10, 10), anchor='center')
+
+        # Label for version selection
+        version_label = ctk.CTkLabel(inner_frame, text="TotK Version:")
+        version_label.pack(side='left', padx=(10, 0))
+
+        # Dropdown menu for version selection
         self.version_var = ctk.StringVar(value="1.2.1")  # Default version set
-        self.version_dropdown = ctk.CTkComboBox(self, values=list(self.version_map.keys()), variable=self.version_var, state="readonly")
-        self.version_dropdown.pack(pady=10)
+        self.version_dropdown = ctk.CTkComboBox(inner_frame, values=list(self.version_map.keys()), variable=self.version_var, state="readonly")
+        self.version_dropdown.pack(side='left', padx=(10, 10))
 
         # Merge Mods section
         self.setup_merge_mods_section()
