@@ -10,54 +10,6 @@ import argparse
 import subprocess
 import sys
 import re
-
-def get_app_data_path():
-    if os.name == 'nt':  # Windows
-        return os.environ.get('LOCALAPPDATA')
-    else:  # Linux and macOS
-        return os.environ.get('XDG_DATA_HOME', os.path.join(os.path.expanduser('~'), '.local', 'share'))
-
-def check_config():
-    app_data_path = get_app_data_path()
-    config_path = os.path.join(app_data_path, 'TotK')
-    config_json_path = os.path.join(config_path, 'config.json')
-    os.makedirs(config_path, exist_ok=True)
-    # Check if config.json exists
-    if not os.path.exists(config_json_path):
-        while True:
-            # Prompt the user for the RomFS Dump Path
-            game_path = input("Please enter the path to a RomFS Dump: ")
-
-            # Check for the existence of Pack\ZsDic.pack.zs
-            zs_dic_path = os.path.join(game_path, 'Pack', 'ZsDic.pack.zs')
-            if os.path.exists(zs_dic_path):
-                break  # Exit the loop if the path is valid
-            else:
-                print(
-                      "\nOops! It seems like the magical ink in our quill has run dry, and\n"
-                      "the enchanted parchment is refusing to accept your game dump.\n\n"
-                      "Remember, even magical commands require the 'Pack/ZsDic.pack.zs' file\n"
-                      "and a sprinkle of pixie dust to work properly.\n\n"
-                      "Please make sure you're using a wand-compatible keyboard and try\n"
-                      "casting the spell again with the correct incantations. If problems\n"
-                      "persist, consult the nearest wise wizard for debugging assistance.\n")
-
-        # Create the config.json file
-        with open(config_json_path, 'w') as f:
-            json.dump({"GamePath": game_path}, f)
-    else:
-        # Load the config.json file
-        with open(config_json_path, 'r') as f:
-            config = json.load(f)
-
-        # Check for the existence of Pack\ZsDic.pack.zs
-        game_path = config["GamePath"]
-        zs_dic_path = os.path.join(game_path, 'Pack', 'ZsDic.pack.zs')
-        if not os.path.exists(zs_dic_path):
-            print("Invalid game dump, missing ZsDic.pack.zs")
-            sys.exit()
-
-check_config()
 from zstd import Zstd
 
 def get_correct_path(relative_path):
@@ -580,6 +532,8 @@ def process_and_merge_rsdb(mod_folder, version):
     for root, dirs, files in os.walk(mod_folder):
         dirs.sort(reverse=True)  # Sort directories in reverse alphabetical order
         for dir_name in dirs:
+            if dir_name == '00_MERGED_RSDB':
+                continue
             rsdb_path = os.path.join(root, dir_name, 'romfs', 'RSDB')
             if os.path.exists(rsdb_path):
                 rsdb_folders.append(rsdb_path)

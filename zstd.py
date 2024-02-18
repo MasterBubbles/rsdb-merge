@@ -2,20 +2,15 @@ import zstandard as zs
 import sarc
 import os
 import io
-import json
+import sys
 
-def get_app_data_path():
-    if os.name == 'nt':  # Windows
-        return os.environ.get('LOCALAPPDATA')
-    else:  # Linux and macOS
-        return os.environ.get('XDG_DATA_HOME', os.path.join(os.path.expanduser('~'), '.local', 'share'))
+def get_correct_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
 
-app_data_path = get_app_data_path()
-config_path = os.path.join(app_data_path, 'TotK', 'config.json')
-with open(config_path, 'r') as f:
-    config = json.load(f)
-game_path = config["GamePath"]
-zs_dic_path = os.path.join(game_path, 'Pack', 'ZsDic.pack.zs')
+    return os.path.join(base_path, relative_path)
 
 class Zstd:
     # Initialize class variable for dictionaries
@@ -31,6 +26,8 @@ class Zstd:
 
         # Load dictionaries only if they haven't been loaded before
         if Zstd.dictionaries is None:
+            zs_dic_path = "dic/ZsDic.pack.zs"
+            zs_dic_path = get_correct_path(zs_dic_path)
             with open(os.path.join(zs_dic_path), 'rb') as file:
                 data = file.read()
             dictionaries = self.decompressor.decompress(data)
@@ -66,10 +63,15 @@ class Zstd:
             filepath = os.path.splitext(filepath)[0]
         else:
             return
+        try:
+            decompressed_data = self.decompressor.decompress(data)
+        except zs.ZstdError as e:
+            print(f"Error decompressing file {filepath}: {e}")
+            return None
         if not(no_output):
             with open(os.path.join(output_dir, os.path.basename(filepath)), 'wb') as file:
-                file.write(self.decompressor.decompress(data))
-        return self.decompressor.decompress(data)
+                file.write(decompressed_data)
+        return decompressed_data
 
     # Decompresses a file or directory
     def Decompress(self, filepath, output_dir='', with_dict=True, no_output=False):
