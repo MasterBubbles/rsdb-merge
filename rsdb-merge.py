@@ -559,6 +559,7 @@ def process_and_merge_rsdb(mod_folder, version):
     os.rmdir(temp_dir)
 
 # GUI Application
+ctk.set_appearance_mode("dark")
 class RSDBMergeApp(ctk.CTk):
     def __init__(self):
         super().__init__()
