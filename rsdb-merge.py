@@ -565,7 +565,8 @@ class RSDBMergeApp(ctk.CTk):
 
         self.title('RSDB Merge Tool 2.0')
         self.geometry('600x600')  # Adjusted for additional layout space
-        self.iconbitmap(images)
+        if os.name == 'nt':
+            self.iconbitmap(images)
 
         self.version_map = {
             '1.0.0': 100,
