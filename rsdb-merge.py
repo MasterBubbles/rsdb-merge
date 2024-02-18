@@ -1,3 +1,4 @@
+from icon import images
 import customtkinter as ctk
 from tkinter import messagebox
 import tkinter.filedialog as fd
@@ -610,6 +611,7 @@ class RSDBMergeApp(ctk.CTk):
 
         self.title('RSDB Merge Tool')
         self.geometry('600x600')  # Adjusted for additional layout space
+        self.iconbitmap(images)
 
         self.version_map = {
             '1.0.0': 100,
@@ -623,7 +625,7 @@ class RSDBMergeApp(ctk.CTk):
         # Version selection
         ctk.CTkLabel(self, text="Version:").pack(pady=(10, 0))
         self.version_var = ctk.StringVar(value="1.2.1")  # Default version set
-        self.version_dropdown = ctk.CTkComboBox(self, values=list(self.version_map.keys()), variable=self.version_var)
+        self.version_dropdown = ctk.CTkComboBox(self, values=list(self.version_map.keys()), variable=self.version_var, state="readonly")
         self.version_dropdown.pack(pady=10)
 
         # Merge Mods section
