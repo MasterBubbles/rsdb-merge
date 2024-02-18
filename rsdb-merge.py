@@ -1,3 +1,4 @@
+import tempfile
 import os
 import json
 import glob
@@ -566,15 +567,50 @@ def apply_changelogs(changelog_dirs, version, output_dir):
                 os.remove(output_file)
                 os.remove(updated_byml_path)
 
+def process_and_merge_rsdb(mod_folder, version):
+    temp_dir = tempfile.mkdtemp()
+    rsdb_folders = []
+    changelog_index = 0
+
+    # Scan for every subfolder
+    for root, dirs, files in os.walk(mod_folder):
+        dirs.sort(reverse=True)  # Sort directories in reverse alphabetical order
+        for dir_name in dirs:
+            rsdb_path = os.path.join(root, dir_name, 'romfs', 'RSDB')
+            if os.path.exists(rsdb_path):
+                rsdb_folders.append(rsdb_path)
+                # Generate changelogs for each RSDB folder
+                generate_changelogs(rsdb_path, temp_dir)
+                # Rename rsdb.json to a numbered json file
+                os.rename(os.path.join(temp_dir, 'rsdb.json'), os.path.join(temp_dir, f'{changelog_index}.json'))
+                changelog_index += 1
+
+    # Create the merged RSDB folder
+    merged_rsdb_folder = os.path.join(mod_folder, '00_MERGED_RSDB', 'romfs', 'RSDB')
+    os.makedirs(merged_rsdb_folder, exist_ok=True)
+
+    # Apply changelogs to the merged RSDB folder
+    apply_changelogs([temp_dir], version, merged_rsdb_folder)
+
+    # Remove the temporary directory
+    for root, dirs, files in os.walk(temp_dir, topdown=False):
+        for name in files:
+            os.remove(os.path.join(root, name))
+    os.rmdir(temp_dir)
+
 # Set up the argument parser
 parser = argparse.ArgumentParser(description='Generate and apply changelogs for RSDB')
-parser.add_argument('--generate-changelog', help='Path to the folder containing .byml.zs files to generate changelogs.')
+parser.add_argument('--version', help='Version of TOTK for which to generate RSDB files (example: 121).')
+parser.add_argument('--merge', help='Path to the folder containing all of your mods')
+parser.add_argument('--generate-changelog', help='Path to the folder containing .byml.zs files to generate a changelog.')
 parser.add_argument('--apply-changelogs', help='Paths to the folders containing .json changelogs to apply.')
 parser.add_argument('--output', help='Path to the output directory for the generated changelog or for the generated RSDB files.')
-parser.add_argument('--version', help='Version of TOTK for which to generate RSDB files (example: 121).')
 
 # Parse the arguments
 args = parser.parse_args()
+
+if args.merge:
+    process_and_merge_rsdb(args.merge, args.version)
 
 if args.generate_changelog:
     output_path = args.output if args.output else os.path.dirname(os.path.abspath(__file__))
