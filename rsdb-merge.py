@@ -563,7 +563,7 @@ class RSDBMergeApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title('RSDB Merge Tool')
+        self.title('RSDB Merge Tool 2.0')
         self.geometry('600x600')  # Adjusted for additional layout space
         self.iconbitmap(images)
 
