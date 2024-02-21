@@ -653,8 +653,9 @@ class RSDBMergeApp(ctk.CTk):
     def apply_changelogs(self):
         # Convert the version to a string format expected by the function
         version_str = str(self.version_map[self.version_var.get()])
-        apply_changelogs(self.changelog_folder_var.get(), version_str, self.output_rsdb_folder_var.get())
-        messagebox.showinfo("Action Complete", "RSDB files generated at" + self.changelog_folder_var.get())
+        changelog_paths = self.changelog_folder_var.get().split('|')
+        apply_changelogs(changelog_paths, version_str, self.output_rsdb_folder_var.get())
+        messagebox.showinfo("Action Complete", "RSDB files generated at " + self.output_rsdb_folder_var.get())
 
     def select_mod_path(self):
         directory = fd.askdirectory()
@@ -689,7 +690,7 @@ if __name__ == "__main__":
         app.mainloop()
     else:
         # Arguments were provided, proceed with the CLI version
-        parser = argparse.ArgumentParser(description='Generate and apply changelogs for RSDB')
+        parser = argparse.ArgumentParser(description='Merge or generate and apply changelogs for RSDB')
         parser.add_argument('--version', help='Version of TOTK for which to generate RSDB files (example: 121).')
         parser.add_argument('--merge', help='Path to the folder containing all of your mods')
         parser.add_argument('--generate-changelog', help='Path to the folder containing .byml.zs files to generate a changelog.')
