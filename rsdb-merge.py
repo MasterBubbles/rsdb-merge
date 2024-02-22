@@ -326,23 +326,29 @@ def apply_changelogs(changelog_dirs, version, output_dir):
         # Load the changelog
         with open(changelog_file, 'r') as f:
             changelog = json.load(f)
+
         # Check if if this is a RSDB changelog
         if not any(type in changelog for type in recognized_types):
             continue
+
         # Iterate over all recognized types in the changelog
         for recognized_type, changes in changelog.items():
             # Skip this recognized type if there are no edited blocks
             if not changes["Added blocks"] and not changes["Edited blocks"]:
                 continue
+
             # Get the path to the master file for this recognized type
             master_file_path = os.path.join(master_dir, f'{recognized_type}.{version}.rstbl.yaml')
             output_file_path = os.path.join(output_dir, f'{recognized_type}.{version}.rstbl.yaml')
+
             # Create the output directory if it doesn't exist
             os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
+
             if recognized_type == "Tag.Product":
                 # Handle "Tag.Product" type as JSON
                 master_file_path = master_file_path.replace('.yaml', '.byml.zs.json')
                 output_file_path = output_file_path.replace('.yaml', '.byml.zs.json')
+
                 # Load the master file if it exists, otherwise start with an empty dictionary
                 if os.path.exists(output_file_path):
                     with open(output_file_path, 'r') as f:
@@ -352,15 +358,18 @@ def apply_changelogs(changelog_dirs, version, output_dir):
                         master_data = json.load(f)
                 else:
                     master_data = {"ActorTagData": {}}
+
                 # Apply edited blocks
                 for block in changes["Edited blocks"]:
                     for actor, tags in block.items():
                         master_data["ActorTagData"][actor] = tags
+
                 # Add new blocks
                 for block in changes["Added blocks"]:
                     for actor, tags in block.items():
                         if actor not in master_data["ActorTagData"]:
                             master_data["ActorTagData"][actor] = tags
+
                 # Save the updated master data
                 with open(output_file_path, 'w') as f:
                     json.dump(master_data, f, indent=4)
@@ -374,9 +383,11 @@ def apply_changelogs(changelog_dirs, version, output_dir):
                         master_data = f.readlines()
                 else:
                     master_data = []
+
                 # Process the master data and the temporary data
                 master_blocks = {}
                 temp_blocks = {}
+
                 if recognized_type == "TagDef.Product":
                     for data, blocks in [(master_data, master_blocks), (changes["Edited blocks"], temp_blocks)]:
                         data_str = ''.join(data)
@@ -386,21 +397,27 @@ def apply_changelogs(changelog_dirs, version, output_dir):
                             if display_name_match:
                                 display_name = display_name_match.group(1)
                                 blocks[display_name] = block_str.split('\n')
+
                     # Replace the blocks in the master data with the blocks from the temporary data
                     for display_name, block in temp_blocks.items():
                         if display_name in master_blocks:
                             master_blocks[display_name] = block
+
                         # Convert the blocks in the master_blocks dictionary to a list and sort it by DisplayOrder
                         master_blocks_list = sorted(master_blocks.values(), key=lambda block: int(re.search(r'DisplayOrder: (\d+),', ''.join(block)).group(1)))
+
                         # Adjust the DisplayOrder values to ensure uniqueness
                         for i, block in enumerate(master_blocks_list):
                             block_str = ''.join(block)
                             block_str = re.sub(r'(DisplayOrder: )(\d+)', lambda m: m.group(1) + str(i), block_str)
                             master_blocks_list[i] = block_str.split('\n')
+
                         # Save the updated master data
                         with open(output_file_path, 'w') as f:
                             f.writelines('\n'.join('- ' + ''.join(block) for block in master_blocks_list))
+
                         added_blocks = []
+
                         # Process the added blocks
                         for block_str in changes["Added blocks"]:
                             # Remove leading '- ' from the block string
@@ -416,20 +433,25 @@ def apply_changelogs(changelog_dirs, version, output_dir):
                                 else:
                                     # If not, add the new block to the added_blocks list
                                     added_blocks.append(block_str)
+
                         # Append the added blocks to the end of the file
                         with open(output_file_path, 'a') as f:
                             for block_str in added_blocks:
                                 f.write('\n- ' + block_str)
+
                         # Read the file again and adjust the DisplayOrder values
                         with open(output_file_path, 'r') as f:
                             lines = f.readlines()
+
                         with open(output_file_path, 'w') as f:
                             for i, line in enumerate(lines):
                                 # Adjust the DisplayOrder value
                                 line = re.sub(r'(DisplayOrder: )(\d+)', lambda m: m.group(1) + str(i), line)
                                 f.write(line)
+
                         with open(output_file_path, 'a') as f:
                             f.writelines("\n")
+
                 else:
                     # Define a dictionary that maps recognized_types to a corresponding regular expression
                     regex_dict = {
@@ -438,6 +460,7 @@ def apply_changelogs(changelog_dirs, version, output_dir):
                         "UIScreen.Product": r'  Name: (.*?)(\n)',
                         "default": r'__RowId: (\S+)'
                     }
+
                     # Use the appropriate regular expression for each recognized_type
                     for data, blocks in [(master_data, master_blocks), (changes["Edited blocks"], temp_blocks)]:
                         data_str = ''.join(data)
@@ -450,9 +473,11 @@ def apply_changelogs(changelog_dirs, version, output_dir):
                                 if not block_str.endswith('\n'):
                                     block_str += "\n"
                                 blocks[name] = block_str
+
                     # Replace the blocks in the master data with the blocks from the temporary data
                     for name, block in temp_blocks.items():
                         master_blocks[name] = block
+
                     # Save the updated master data
                     with open(output_file_path, 'w', encoding='utf-8') as f:
                         for i, block in enumerate(master_blocks.values()):
@@ -461,7 +486,9 @@ def apply_changelogs(changelog_dirs, version, output_dir):
                             if i != 0 and not block_str.startswith('\n'):
                                 block_str = '\n' + block_str
                             f.writelines(block_str)
+
                     added_blocks = []
+
                     # Process the added blocks
                     for block_str in changes["Added blocks"]:
                         # Remove leading '- ' from the block string
@@ -476,10 +503,12 @@ def apply_changelogs(changelog_dirs, version, output_dir):
                             else:
                                 # If not, add the new block to the added_blocks list
                                 added_blocks.append(block_str)
+
                     # Append the added blocks to the end of the file
                     with open(output_file_path, 'a', encoding='utf-8') as f:
                         for block_str in added_blocks:
                             f.write('\n- ' + block_str)
+
                     with open(output_file_path, 'a', encoding='utf-8') as f:
                         f.writelines("\n")
 
@@ -497,6 +526,7 @@ def apply_changelogs(changelog_dirs, version, output_dir):
             # Compress the BYML file
             compressor = Zstd()
             compressor._CompressFile(updated_byml_path, output_dir=output_dir, level=16, with_dict=True)
+
             # Remove the uncompressed files
             os.remove(output_file)
             os.remove(updated_byml_path)
