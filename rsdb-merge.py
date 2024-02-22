@@ -308,220 +308,198 @@ def apply_changelogs(changelog_dirs, version, output_dir):
         "Location.Product", "LocatorData.Product", "PouchActorInfo.Product", "Tag.Product", "TagDef.Product",
         "XLinkPropertyTable.Product", "XLinkPropertyTableList.Product"
     ]
+
+    # Initialize an empty list to hold all changelog file paths
+    all_changelog_files = []
     # Iterate over all provided directories
+    # Aggregate all JSON changelog files from all provided directories
     for changelog_dir in changelog_dirs:
-        # Get the list of all JSON files in the directory
-        changelog_files = glob.glob(os.path.join(changelog_dir, '*.json'))
+        if os.path.exists(changelog_dir):
+            # Extend the list with all JSON files found in the current directory
+            all_changelog_files.extend(glob.glob(os.path.join(changelog_dir, '*.json')))
+        else:
+            print(f"Warning: Changelog directory {changelog_dir} does not exist.")
 
-        # Iterate over all JSON files
-        for changelog_file in changelog_files:
-            # Load the changelog
-            with open(changelog_file, 'r') as f:
-                changelog = json.load(f)
-
-            # Check if if this is a RSDB changelog
-            if not any(type in changelog for type in recognized_types):
+    # Now, all_changelog_files contains paths to all changelog files across the provided directories
+    # You can iterate over this list to process each changelog file
+    for changelog_file in all_changelog_files:
+        # Load the changelog
+        with open(changelog_file, 'r') as f:
+            changelog = json.load(f)
+        # Check if if this is a RSDB changelog
+        if not any(type in changelog for type in recognized_types):
+            continue
+        # Iterate over all recognized types in the changelog
+        for recognized_type, changes in changelog.items():
+            # Skip this recognized type if there are no edited blocks
+            if not changes["Added blocks"] and not changes["Edited blocks"]:
                 continue
-
-            # Iterate over all recognized types in the changelog
-            for recognized_type, changes in changelog.items():
-                # Skip this recognized type if there are no edited blocks
-                if not changes["Added blocks"] and not changes["Edited blocks"]:
-                    continue
-
-                # Get the path to the master file for this recognized type
-                master_file_path = os.path.join(master_dir, f'{recognized_type}.{version}.rstbl.yaml')
-                output_file_path = os.path.join(output_dir, f'{recognized_type}.{version}.rstbl.yaml')
-
-                # Create the output directory if it doesn't exist
-                os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
-
-                if recognized_type == "Tag.Product":
-                    # Handle "Tag.Product" type as JSON
-                    master_file_path = master_file_path.replace('.yaml', '.byml.zs.json')
-                    output_file_path = output_file_path.replace('.yaml', '.byml.zs.json')
-
-                    # Load the master file if it exists, otherwise start with an empty dictionary
-                    if os.path.exists(output_file_path):
-                        with open(output_file_path, 'r') as f:
-                            master_data = json.load(f)
-                    elif os.path.exists(master_file_path):
-                        with open(master_file_path, 'r') as f:
-                            master_data = json.load(f)
-                    else:
-                        master_data = {"ActorTagData": {}}
-
-                    # Apply edited blocks
-                    for block in changes["Edited blocks"]:
-                        for actor, tags in block.items():
-                            master_data["ActorTagData"][actor] = tags
-
-                    # Add new blocks
-                    for block in changes["Added blocks"]:
-                        for actor, tags in block.items():
-                            if actor not in master_data["ActorTagData"]:
-                                master_data["ActorTagData"][actor] = tags
-
-                    # Save the updated master data
-                    with open(output_file_path, 'w') as f:
-                        json.dump(master_data, f, indent=4)
+            # Get the path to the master file for this recognized type
+            master_file_path = os.path.join(master_dir, f'{recognized_type}.{version}.rstbl.yaml')
+            output_file_path = os.path.join(output_dir, f'{recognized_type}.{version}.rstbl.yaml')
+            # Create the output directory if it doesn't exist
+            os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
+            if recognized_type == "Tag.Product":
+                # Handle "Tag.Product" type as JSON
+                master_file_path = master_file_path.replace('.yaml', '.byml.zs.json')
+                output_file_path = output_file_path.replace('.yaml', '.byml.zs.json')
+                # Load the master file if it exists, otherwise start with an empty dictionary
+                if os.path.exists(output_file_path):
+                    with open(output_file_path, 'r') as f:
+                        master_data = json.load(f)
+                elif os.path.exists(master_file_path):
+                    with open(master_file_path, 'r') as f:
+                        master_data = json.load(f)
                 else:
-                    # Load the master file if it exists, otherwise start with an empty list
-                    if os.path.exists(output_file_path):
-                        with open(output_file_path, 'r', encoding='utf-8') as f:
-                            master_data = f.readlines()
-                    elif os.path.exists(master_file_path):
-                        with open(master_file_path, 'r', encoding='utf-8') as f:
-                            master_data = f.readlines()
-                    else:
-                        master_data = []
-
-                    # Process the master data and the temporary data
-                    master_blocks = {}
-                    temp_blocks = {}
-
-                    if recognized_type == "TagDef.Product":
-                        for data, blocks in [(master_data, master_blocks), (changes["Edited blocks"], temp_blocks)]:
-                            data_str = ''.join(data)
-                            blocks_str = re.findall(r'{.*?}', data_str, re.DOTALL)
-                            for block_str in blocks_str:
-                                display_name_match = re.search(r'DisplayName: (.*?),', block_str)
-                                if display_name_match:
-                                    display_name = display_name_match.group(1)
-                                    blocks[display_name] = block_str.split('\n')
-
-                        # Replace the blocks in the master data with the blocks from the temporary data
-                        for display_name, block in temp_blocks.items():
-                            if display_name in master_blocks:
-                                master_blocks[display_name] = block
-
-                            # Convert the blocks in the master_blocks dictionary to a list and sort it by DisplayOrder
-                            master_blocks_list = sorted(master_blocks.values(), key=lambda block: int(re.search(r'DisplayOrder: (\d+),', ''.join(block)).group(1)))
-
-                            # Adjust the DisplayOrder values to ensure uniqueness
-                            for i, block in enumerate(master_blocks_list):
-                                block_str = ''.join(block)
-                                block_str = re.sub(r'(DisplayOrder: )(\d+)', lambda m: m.group(1) + str(i), block_str)
-                                master_blocks_list[i] = block_str.split('\n')
-
-                            # Save the updated master data
-                            with open(output_file_path, 'w') as f:
-                                f.writelines('\n'.join('- ' + ''.join(block) for block in master_blocks_list))
-
-                            added_blocks = []
-
-                            # Process the added blocks
-                            for block_str in changes["Added blocks"]:
-                                # Remove leading '- ' from the block string
-                                if block_str.startswith('- '):
-                                    block_str = block_str[2:]
-                                # Extract the DisplayName from the block string
-                                display_name_match = re.search(r'DisplayName: (.*?),', block_str)
-                                if display_name_match:
-                                    display_name = display_name_match.group(1)
-                                    # If a block with the same DisplayName already exists, replace it
-                                    if display_name in master_blocks:
-                                        master_blocks[display_name] = block_str.split('\n')
-                                    else:
-                                        # If not, add the new block to the added_blocks list
-                                        added_blocks.append(block_str)
-
-                            # Append the added blocks to the end of the file
-                            with open(output_file_path, 'a') as f:
-                                for block_str in added_blocks:
-                                    f.write('\n- ' + block_str)
-
-                            # Read the file again and adjust the DisplayOrder values
-                            with open(output_file_path, 'r') as f:
-                                lines = f.readlines()
-
-                            with open(output_file_path, 'w') as f:
-                                for i, line in enumerate(lines):
-                                    # Adjust the DisplayOrder value
-                                    line = re.sub(r'(DisplayOrder: )(\d+)', lambda m: m.group(1) + str(i), line)
-                                    f.write(line)
-
-                            with open(output_file_path, 'a') as f:
-                                f.writelines("\n")
-
-                    else:
-                        # Define a dictionary that maps recognized_types to a corresponding regular expression
-                        regex_dict = {
-                            "GameSafetySetting.Product": r'!u 0x(.*?)(,|\n)',
-                            "RumbleCall.Product": r',Name: (.*?)(})',
-                            "UIScreen.Product": r'  Name: (.*?)(\n)',
-                            "default": r'__RowId: (\S+)'
-                        }
-
-                        # Use the appropriate regular expression for each recognized_type
-                        for data, blocks in [(master_data, master_blocks), (changes["Edited blocks"], temp_blocks)]:
-                            data_str = ''.join(data)
-                            blocks_str = re.findall(r'-.*?(?=\n-|$)', data_str, re.DOTALL)
-                            for block_str in blocks_str:
-                                regex = regex_dict.get(recognized_type, regex_dict["default"])
-                                name_match = re.search(regex, block_str)
-                                if name_match:
-                                    name = name_match.group(1)
-                                    if not block_str.endswith('\n'):
-                                        block_str += "\n"
-                                    blocks[name] = block_str
-
-                        # Replace the blocks in the master data with the blocks from the temporary data
-                        for name, block in temp_blocks.items():
-                            master_blocks[name] = block
-
+                    master_data = {"ActorTagData": {}}
+                # Apply edited blocks
+                for block in changes["Edited blocks"]:
+                    for actor, tags in block.items():
+                        master_data["ActorTagData"][actor] = tags
+                # Add new blocks
+                for block in changes["Added blocks"]:
+                    for actor, tags in block.items():
+                        if actor not in master_data["ActorTagData"]:
+                            master_data["ActorTagData"][actor] = tags
+                # Save the updated master data
+                with open(output_file_path, 'w') as f:
+                    json.dump(master_data, f, indent=4)
+            else:
+                # Load the master file if it exists, otherwise start with an empty list
+                if os.path.exists(output_file_path):
+                    with open(output_file_path, 'r', encoding='utf-8') as f:
+                        master_data = f.readlines()
+                elif os.path.exists(master_file_path):
+                    with open(master_file_path, 'r', encoding='utf-8') as f:
+                        master_data = f.readlines()
+                else:
+                    master_data = []
+                # Process the master data and the temporary data
+                master_blocks = {}
+                temp_blocks = {}
+                if recognized_type == "TagDef.Product":
+                    for data, blocks in [(master_data, master_blocks), (changes["Edited blocks"], temp_blocks)]:
+                        data_str = ''.join(data)
+                        blocks_str = re.findall(r'{.*?}', data_str, re.DOTALL)
+                        for block_str in blocks_str:
+                            display_name_match = re.search(r'DisplayName: (.*?),', block_str)
+                            if display_name_match:
+                                display_name = display_name_match.group(1)
+                                blocks[display_name] = block_str.split('\n')
+                    # Replace the blocks in the master data with the blocks from the temporary data
+                    for display_name, block in temp_blocks.items():
+                        if display_name in master_blocks:
+                            master_blocks[display_name] = block
+                        # Convert the blocks in the master_blocks dictionary to a list and sort it by DisplayOrder
+                        master_blocks_list = sorted(master_blocks.values(), key=lambda block: int(re.search(r'DisplayOrder: (\d+),', ''.join(block)).group(1)))
+                        # Adjust the DisplayOrder values to ensure uniqueness
+                        for i, block in enumerate(master_blocks_list):
+                            block_str = ''.join(block)
+                            block_str = re.sub(r'(DisplayOrder: )(\d+)', lambda m: m.group(1) + str(i), block_str)
+                            master_blocks_list[i] = block_str.split('\n')
                         # Save the updated master data
-                        with open(output_file_path, 'w', encoding='utf-8') as f:
-                            for i, block in enumerate(master_blocks.values()):
-                                block_str = block
-                                block_str = block_str.replace("- -", "-").replace("--", "-")
-                                if i != 0 and not block_str.startswith('\n'):
-                                    block_str = '\n' + block_str
-                                f.writelines(block_str)
-
+                        with open(output_file_path, 'w') as f:
+                            f.writelines('\n'.join('- ' + ''.join(block) for block in master_blocks_list))
                         added_blocks = []
-
                         # Process the added blocks
                         for block_str in changes["Added blocks"]:
                             # Remove leading '- ' from the block string
                             if block_str.startswith('- '):
                                 block_str = block_str[2:]
-                            name_match = re.search(regex, block_str)
-                            if name_match:
-                                name_hash = name_match.group(1)
-                                # If a block with the same name hash already exists, replace it
-                                if name_hash in master_blocks:
-                                    master_blocks[name_hash] = block_str
+                            # Extract the DisplayName from the block string
+                            display_name_match = re.search(r'DisplayName: (.*?),', block_str)
+                            if display_name_match:
+                                display_name = display_name_match.group(1)
+                                # If a block with the same DisplayName already exists, replace it
+                                if display_name in master_blocks:
+                                    master_blocks[display_name] = block_str.split('\n')
                                 else:
                                     # If not, add the new block to the added_blocks list
                                     added_blocks.append(block_str)
-
                         # Append the added blocks to the end of the file
-                        with open(output_file_path, 'a', encoding='utf-8') as f:
+                        with open(output_file_path, 'a') as f:
                             for block_str in added_blocks:
                                 f.write('\n- ' + block_str)
-
-                        with open(output_file_path, 'a', encoding='utf-8') as f:
+                        # Read the file again and adjust the DisplayOrder values
+                        with open(output_file_path, 'r') as f:
+                            lines = f.readlines()
+                        with open(output_file_path, 'w') as f:
+                            for i, line in enumerate(lines):
+                                # Adjust the DisplayOrder value
+                                line = re.sub(r'(DisplayOrder: )(\d+)', lambda m: m.group(1) + str(i), line)
+                                f.write(line)
+                        with open(output_file_path, 'a') as f:
                             f.writelines("\n")
+                else:
+                    # Define a dictionary that maps recognized_types to a corresponding regular expression
+                    regex_dict = {
+                        "GameSafetySetting.Product": r'!u 0x(.*?)(,|\n)',
+                        "RumbleCall.Product": r',Name: (.*?)(})',
+                        "UIScreen.Product": r'  Name: (.*?)(\n)',
+                        "default": r'__RowId: (\S+)'
+                    }
+                    # Use the appropriate regular expression for each recognized_type
+                    for data, blocks in [(master_data, master_blocks), (changes["Edited blocks"], temp_blocks)]:
+                        data_str = ''.join(data)
+                        blocks_str = re.findall(r'-.*?(?=\n-|$)', data_str, re.DOTALL)
+                        for block_str in blocks_str:
+                            regex = regex_dict.get(recognized_type, regex_dict["default"])
+                            name_match = re.search(regex, block_str)
+                            if name_match:
+                                name = name_match.group(1)
+                                if not block_str.endswith('\n'):
+                                    block_str += "\n"
+                                blocks[name] = block_str
+                    # Replace the blocks in the master data with the blocks from the temporary data
+                    for name, block in temp_blocks.items():
+                        master_blocks[name] = block
+                    # Save the updated master data
+                    with open(output_file_path, 'w', encoding='utf-8') as f:
+                        for i, block in enumerate(master_blocks.values()):
+                            block_str = block
+                            block_str = block_str.replace("- -", "-").replace("--", "-")
+                            if i != 0 and not block_str.startswith('\n'):
+                                block_str = '\n' + block_str
+                            f.writelines(block_str)
+                    added_blocks = []
+                    # Process the added blocks
+                    for block_str in changes["Added blocks"]:
+                        # Remove leading '- ' from the block string
+                        if block_str.startswith('- '):
+                            block_str = block_str[2:]
+                        name_match = re.search(regex, block_str)
+                        if name_match:
+                            name_hash = name_match.group(1)
+                            # If a block with the same name hash already exists, replace it
+                            if name_hash in master_blocks:
+                                master_blocks[name_hash] = block_str
+                            else:
+                                # If not, add the new block to the added_blocks list
+                                added_blocks.append(block_str)
+                    # Append the added blocks to the end of the file
+                    with open(output_file_path, 'a', encoding='utf-8') as f:
+                        for block_str in added_blocks:
+                            f.write('\n- ' + block_str)
+                    with open(output_file_path, 'a', encoding='utf-8') as f:
+                        f.writelines("\n")
 
-        # After all changelogs have been processed, process each output file accordingly
-        for output_file in glob.glob(os.path.join(output_dir, '*')):
-            if output_file.endswith('.json'):
-                # Process "Tag.Product" type with TagProductTool
-                subprocess.run([tag_product, output_file, output_dir], capture_output=True, text=True)
-                os.remove(output_file)
-            elif output_file.endswith('.yaml'):
-                # Convert other types to BYML, compress them, and delete the YAML files
-                updated_byml_path = output_file[:-4] + 'byml'
-                subprocess.call([byml_to_yaml, 'to-byml', output_file, '-o', updated_byml_path])
-                
-                # Compress the BYML file
-                compressor = Zstd()
-                compressor._CompressFile(updated_byml_path, output_dir=output_dir, level=16, with_dict=True)
-
-                # Remove the uncompressed files
-                os.remove(output_file)
-                os.remove(updated_byml_path)
+    # After all changelogs have been processed, process each output file accordingly
+    for output_file in glob.glob(os.path.join(output_dir, '*')):
+        if output_file.endswith('.json'):
+            # Process "Tag.Product" type with TagProductTool
+            subprocess.run([tag_product, output_file, output_dir], capture_output=True, text=True)
+            os.remove(output_file)
+        elif output_file.endswith('.yaml'):
+            # Convert other types to BYML, compress them, and delete the YAML files
+            updated_byml_path = output_file[:-4] + 'byml'
+            subprocess.call([byml_to_yaml, 'to-byml', output_file, '-o', updated_byml_path])
+            
+            # Compress the BYML file
+            compressor = Zstd()
+            compressor._CompressFile(updated_byml_path, output_dir=output_dir, level=16, with_dict=True)
+            # Remove the uncompressed files
+            os.remove(output_file)
+            os.remove(updated_byml_path)
 
 def process_and_merge_rsdb(mod_folder, version):
     temp_dir = tempfile.mkdtemp()
