@@ -12,4 +12,6 @@ dist/
 *.json
 *.spec
 *.exe
+*.png
+*.ico
 TagProductTool.py

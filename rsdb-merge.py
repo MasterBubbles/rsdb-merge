@@ -566,14 +566,84 @@ def process_and_merge_rsdb(mod_folder, version):
             os.remove(os.path.join(root, name))
     os.rmdir(temp_dir)
 
+def parse_changelogs_to_files(changelog_json_path, output_directory):
+    with open(changelog_json_path, 'r') as file:
+        changelog = json.load(file)
+
+    for product_type, changes in changelog.items():
+        if changes["Added blocks"] or changes["Edited blocks"]:
+            if product_type == "Tag.Product":
+                output_path = os.path.join(output_directory, f"{product_type}.json")
+                with open(output_path, 'w') as json_file:
+                    json.dump(changes, json_file, indent=4)
+            else:
+                output_path = os.path.join(output_directory, f"{product_type}.yaml")
+                with open(output_path, 'w') as text_file:
+                    if changes["Added blocks"]:
+                        for block in changes["Added blocks"]:
+                            text_file.write('{ADDITION}\n')  # Prepend ADDITION to each block
+                            text_file.write(block + "\n")
+                    if changes["Edited blocks"]:
+                        for block in changes["Edited blocks"]:
+                            text_file.write('{MODIFICATION}\n')  # Prepend MODIFICATION to each block
+                            text_file.write(block + "\n")
+
+def pack_files_to_changelog(files_directory, output_json_path):
+    recognized_types = [
+        "ActorInfo.Product", "AttachmentActorInfo.Product", "Challenge.Product", "EnhancementMaterialInfo.Product",
+        "EventPlayEnvSetting.Product", "EventSetting.Product", "GameActorInfo.Product", "GameAnalyzedEventInfo.Product",
+        "GameEventBaseSetting.Product", "GameEventMetadata.Product", "GameSafetySetting.Product", "LoadingTips.Product",
+        "Location.Product", "LocatorData.Product", "PouchActorInfo.Product", "RumbleCall.Product", "Tag.Product", 
+        "TagDef.Product", "UIScreen.Product", "XLinkPropertyTable.Product", "XLinkPropertyTableList.Product"
+    ]
+
+    # Initialize the changelog dictionary with all recognized types
+    changelog = {type_name: {"Added blocks": [], "Edited blocks": []} for type_name in recognized_types}
+
+    for file_name in os.listdir(files_directory):
+        product_type = file_name.split('.')[0]
+        if not product_type.endswith(".Product"):
+            product_type += ".Product"  # Ensure the product type ends with ".Product"
+
+        file_path = os.path.join(files_directory, file_name)
+        if file_name.endswith('.json'):
+            with open(file_path, 'r') as file:
+                changes = json.load(file)
+                # Check and append \n to each block in the JSON data
+                if "Added blocks" in changes:
+                    changes["Added blocks"] = [block + "\n" if isinstance(block, str) else block for block in changes["Added blocks"]]
+                if "Edited blocks" in changes:
+                    changes["Edited blocks"] = [block + "\n" if isinstance(block, str) else block for block in changes["Edited blocks"]]
+                changelog[product_type] = changes
+        elif file_name.endswith('.yaml'):  # Assuming the extension is .yaml for plain text handling
+            with open(file_path, 'r') as file:
+                content = file.read()
+                added_blocks = content.split('{ADDITION}\n')[1:]  # Split and remove the first part before the first {ADDITION}
+                edited_blocks = content.split('{MODIFICATION}\n')[1:]  # Split and remove the first part before the first {MODIFICATION}
+
+                # Process added blocks
+                added_blocks = [block.strip() + "\n" for block in added_blocks if block.strip()]  # Append \n to each block
+                # Process edited blocks
+                edited_blocks = [block.strip() + "\n" for block in edited_blocks if block.strip()]  # Append \n to each block
+
+                if added_blocks or edited_blocks:
+                    changelog[product_type] = {"Added blocks": added_blocks, "Edited blocks": edited_blocks}
+        else:
+            continue
+
+    with open(output_json_path, 'w') as file:
+        json.dump(changelog, file, indent=4)
+
 # GUI Application
 ctk.set_appearance_mode("dark")
+# Uncomment below line if compiling for switch
+# ctk.set_widget_scaling(1.35)
 class RSDBMergeApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title('RSDB Merge Tool 2.0 [rev2]')
-        self.geometry('600x580')  # Adjusted for additional layout space
+        self.title('RSDB Merge Tool 2.1')
+        self.geometry('800x675')  # Adjusted for additional layout space
         if os.name == 'nt':
             self.iconbitmap(images)
 
@@ -589,11 +659,11 @@ class RSDBMergeApp(ctk.CTk):
         # Version selection
         # Container frame to hold the label and dropdown side by side
         container_frame = ctk.CTkFrame(self)
-        container_frame.pack(pady=10, fill='x')
-
-        # Use an inner frame to hold the label and dropdown, allowing for easier centering
+        container_frame.pack(fill='x', pady=5)
+        container_frame.configure(fg_color=self.cget("fg_color"))
         inner_frame = ctk.CTkFrame(container_frame)
-        inner_frame.pack(pady=(10, 10), anchor='center')
+        inner_frame.pack(anchor='center')
+        inner_frame.configure(fg_color=container_frame.cget("fg_color"))
 
         # Label for version selection
         version_label = ctk.CTkLabel(inner_frame, text="TotK Version:")
@@ -613,40 +683,41 @@ class RSDBMergeApp(ctk.CTk):
         # Apply Changelogs section
         self.setup_apply_changelogs_section()
 
+        # Parse Changelogs section
+        self.setup_changelog_processing_section()
+
+        # Exit button
+        self.setup_exit_button()
+
     def setup_section(self, frame, title, text_var, browse_command):
         entry_frame = ctk.CTkFrame(frame)
         entry_frame.pack(pady=5, fill='x', padx=20)
-        ctk.CTkLabel(entry_frame, text=title).pack(side='left', padx=(0, 10))
-        ctk.CTkEntry(entry_frame, textvariable=text_var, width=200).pack(side='left', fill='x', expand=True)
+        
+        # Match the background color of the parent frame
+        entry_frame.configure(fg_color=frame.cget("fg_color"))
+        
+        # Set a fixed width for the label to ensure alignment
+        label_width = 120  # Adjust this value as needed
+        ctk.CTkLabel(entry_frame, text=title, width=label_width, anchor='w').pack(side='left', padx=(0, 10))
+        
+        # Set a fixed width for the entry to ensure consistent size
+        entry_width = 450  # Adjust this value as needed
+        ctk.CTkEntry(entry_frame, textvariable=text_var, width=entry_width).pack(side='left', fill='x', expand=True)
+        
         ctk.CTkButton(entry_frame, text="Browse", command=browse_command).pack(side='left', padx=(10, 0))
 
     def setup_merge_mods_section(self):
         merge_mods_frame = ctk.CTkFrame(self)
-        merge_mods_frame.pack(pady=10, fill='x')
-        ctk.CTkLabel(merge_mods_frame, text="Merge Mods").pack(pady=(0, 10))
+        merge_mods_frame.pack(pady=5, fill='x')
+        ctk.CTkLabel(merge_mods_frame, text="Merge Mods").pack()
         self.mod_path_var = ctk.StringVar()
         self.setup_section(merge_mods_frame, "Mod Folder:", self.mod_path_var, self.select_mod_path)
-        ctk.CTkButton(merge_mods_frame, text="Merge", command=self.merge_mods).pack(pady=10)
+        ctk.CTkButton(merge_mods_frame, text="Merge", command=self.merge_mods).pack(pady=5)
 
-    def setup_generate_changelog_section(self):
-        generate_changelog_frame = ctk.CTkFrame(self)
-        generate_changelog_frame.pack(pady=10, fill='x')
-        ctk.CTkLabel(generate_changelog_frame, text="Generate Changelog").pack(pady=(0, 10))
-        self.rsdb_folder_var = ctk.StringVar()
-        self.changelog_output_folder_var = ctk.StringVar()
-        self.setup_section(generate_changelog_frame, "RSDB Folder:", self.rsdb_folder_var, self.select_rsdb_folder)
-        self.setup_section(generate_changelog_frame, "Output Folder:", self.changelog_output_folder_var, self.select_changelog_output_folder)
-        ctk.CTkButton(generate_changelog_frame, text="Generate", command=self.generate_changelog).pack(pady=10)
-
-    def setup_apply_changelogs_section(self):
-        apply_changelogs_frame = ctk.CTkFrame(self)
-        apply_changelogs_frame.pack(pady=10, fill='x')
-        ctk.CTkLabel(apply_changelogs_frame, text="Apply Changelogs").pack(pady=(0, 10))
-        self.changelog_folder_var = ctk.StringVar()
-        self.output_rsdb_folder_var = ctk.StringVar()
-        self.setup_section(apply_changelogs_frame, "Changelog Folder:", self.changelog_folder_var, self.select_changelog_folder)
-        self.setup_section(apply_changelogs_frame, "Output RSDB Folder:", self.output_rsdb_folder_var, self.select_output_rsdb_folder)
-        ctk.CTkButton(apply_changelogs_frame, text="Apply", command=self.apply_changelogs).pack(pady=10)
+    def select_mod_path(self):
+        directory = fd.askdirectory()
+        if directory:
+            self.mod_path_var.set(directory)
 
     def merge_mods(self):
         # Convert the version to a string format expected by the function
@@ -654,21 +725,15 @@ class RSDBMergeApp(ctk.CTk):
         process_and_merge_rsdb(self.mod_path_var.get(), version_int)
         messagebox.showinfo("Action Complete", "Mods merging completed")
 
-    def generate_changelog(self):
-        generate_changelogs(self.rsdb_folder_var.get(), self.changelog_output_folder_var.get())
-        messagebox.showinfo("Action Complete", "Changelog generated")
-
-    def apply_changelogs(self):
-        # Convert the version to a string format expected by the function
-        version_str = str(self.version_map[self.version_var.get()])
-        changelog_paths = self.changelog_folder_var.get().split('|')
-        apply_changelogs(changelog_paths, version_str, self.output_rsdb_folder_var.get())
-        messagebox.showinfo("Action Complete", "RSDB files generated at " + self.output_rsdb_folder_var.get())
-
-    def select_mod_path(self):
-        directory = fd.askdirectory()
-        if directory:
-            self.mod_path_var.set(directory)
+    def setup_generate_changelog_section(self):
+        generate_changelog_frame = ctk.CTkFrame(self)
+        generate_changelog_frame.pack(pady=5, fill='x')
+        ctk.CTkLabel(generate_changelog_frame, text="Generate Changelog").pack()
+        self.rsdb_folder_var = ctk.StringVar()
+        self.changelog_output_folder_var = ctk.StringVar()
+        self.setup_section(generate_changelog_frame, "RSDB Folder:", self.rsdb_folder_var, self.select_rsdb_folder)
+        self.setup_section(generate_changelog_frame, "Output Folder:", self.changelog_output_folder_var, self.select_changelog_output_folder)
+        ctk.CTkButton(generate_changelog_frame, text="Generate", command=self.generate_changelog).pack(pady=5)
 
     def select_rsdb_folder(self):
         directory = fd.askdirectory()
@@ -680,6 +745,20 @@ class RSDBMergeApp(ctk.CTk):
         if directory:
             self.changelog_output_folder_var.set(directory)
 
+    def generate_changelog(self):
+        generate_changelogs(self.rsdb_folder_var.get(), self.changelog_output_folder_var.get())
+        messagebox.showinfo("Action Complete", "Changelog generated")
+
+    def setup_apply_changelogs_section(self):
+        apply_changelogs_frame = ctk.CTkFrame(self)
+        apply_changelogs_frame.pack(pady=5, fill='x')
+        ctk.CTkLabel(apply_changelogs_frame, text="Apply Changelogs").pack()
+        self.changelog_folder_var = ctk.StringVar()
+        self.output_rsdb_folder_var = ctk.StringVar()
+        self.setup_section(apply_changelogs_frame, "Changelog Folder:", self.changelog_folder_var, self.select_changelog_folder)
+        self.setup_section(apply_changelogs_frame, "Output RSDB Folder:", self.output_rsdb_folder_var, self.select_output_rsdb_folder)
+        ctk.CTkButton(apply_changelogs_frame, text="Apply", command=self.apply_changelogs).pack(pady=5)
+
     def select_changelog_folder(self):
         directory = fd.askdirectory()
         if directory:
@@ -689,6 +768,60 @@ class RSDBMergeApp(ctk.CTk):
         directory = fd.askdirectory()
         if directory:
             self.output_rsdb_folder_var.set(directory)
+
+    def apply_changelogs(self):
+        # Convert the version to a string format expected by the function
+        version_str = str(self.version_map[self.version_var.get()])
+        changelog_paths = self.changelog_folder_var.get().split('|')
+        apply_changelogs(changelog_paths, version_str, self.output_rsdb_folder_var.get())
+        messagebox.showinfo("Action Complete", "RSDB files generated at " + self.output_rsdb_folder_var.get())
+
+    def setup_changelog_processing_section(self):
+        changelog_processing_frame = ctk.CTkFrame(self)
+        changelog_processing_frame.pack(pady=5, fill='x')
+        ctk.CTkLabel(changelog_processing_frame, text="Changelog Processing").pack()
+        
+        self.processing_changelog_json_var = ctk.StringVar()
+        self.setup_section(changelog_processing_frame, "JSON Changelog File:", self.processing_changelog_json_var, self.select_processing_changelog_json)
+        
+        self.processing_changelog_folder_var = ctk.StringVar()
+        self.setup_section(changelog_processing_frame, "Parsed files folder:", self.processing_changelog_folder_var, self.select_processing_folder)
+        
+        # Frame for buttons, centered within the changelog_processing_frame
+        button_frame = ctk.CTkFrame(changelog_processing_frame)
+        button_frame.pack(pady=5)
+        button_frame.configure(fg_color=changelog_processing_frame.cget("fg_color"))  # Match the background color
+
+        # Buttons for parsing and packing changelogs
+        parse_button = ctk.CTkButton(button_frame, text="Parse into files", command=self.parse_changelog_into_files)
+        parse_button.pack(side='left', padx=10)
+        
+        pack_button = ctk.CTkButton(button_frame, text="Pack into changelog", command=self.pack_files_into_changelog)
+        pack_button.pack(side='left', padx=10)
+
+    def select_processing_changelog_json(self):
+        file_path = fd.askopenfilename()
+        if file_path:
+            self.processing_changelog_json_var.set(file_path)
+
+    def select_processing_folder(self):
+        directory = fd.askdirectory()
+        if directory:
+            self.processing_changelog_folder_var.set(directory)
+
+    def parse_changelog_into_files(self):
+        parse_changelogs_to_files(self.processing_changelog_json_var.get(), self.processing_changelog_folder_var.get())
+        messagebox.showinfo("Action Complete", "Changelog parsed into files")
+
+    def pack_files_into_changelog(self):
+        pack_files_to_changelog(self.processing_changelog_folder_var.get(), self.processing_changelog_json_var.get())
+        messagebox.showinfo("Action Complete", "Files packed into changelog")
+
+    def setup_exit_button(self):
+        exit_button = ctk.CTkButton(self, text="Exit", command=self.destroy, width=135, height=40, fg_color='#C70039', hover_color='#E57373')
+        # uncomment below line for Switch version
+        #exit_button = ctk.CTkButton(self, text="Exit", command=self.destroy, width=135, height=60, fg_color='#C70039', hover_color='#E57373')
+        exit_button.pack(side='right', anchor='e', padx=10, pady=1)
 
 if __name__ == "__main__":
     # Check if any arguments were provided
@@ -704,6 +837,10 @@ if __name__ == "__main__":
         parser.add_argument('--generate-changelog', help='Path to the folder containing .byml.zs files to generate a changelog.')
         parser.add_argument('--apply-changelogs', help='Paths to the folders containing .json changelogs to apply.')
         parser.add_argument('--output', help='Path to the output directory for the generated changelog or for the generated RSDB files.')
+        parser.add_argument('--parse-changelog', help='Path to the JSON changelog file to parse into multiple files.')
+        parser.add_argument('--pack-changelog', help='Path to the folder containing parsed files to pack back into a JSON changelog.')
+        parser.add_argument('--parse-output', help='Output directory for parsed files from the JSON changelog.')
+        parser.add_argument('--pack-output', help='Output JSON file path for the packed changelog.')
 
         # Parse the arguments
         args = parser.parse_args()
@@ -721,3 +858,9 @@ if __name__ == "__main__":
                 sys.exit(1)
             changelog_paths = args.apply_changelogs.split('|')
             apply_changelogs(changelog_paths, args.version, args.output)
+
+        if args.parse_changelog and args.parse_output:
+            parse_changelogs_to_files(args.parse_changelog, args.parse_output)
+
+        if args.pack_changelog and args.pack_output:
+            pack_files_to_changelog(args.pack_changelog, args.pack_output)
