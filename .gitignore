@@ -12,6 +12,6 @@ dist/
 *.json
 *.spec
 *.exe
-*.png
 *.ico
+RSDB*.png
 TagProductTool.py
