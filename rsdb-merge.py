@@ -254,6 +254,11 @@ def generate_changelogs(folder_path, output_path):
                 # Update the main changelog dictionary with the changes for this type
                 changelog[type_name]["Added blocks"].extend(file_changelog["Added blocks"])
                 changelog[type_name]["Edited blocks"].extend(file_changelog["Edited blocks"])
+
+                # Handle CachedTagList: only include new tags not present in the master file's CachedTagList
+                new_tags = set(json_data.get("CachedTagList", [])) - set(master_data.get("CachedTagList", []))
+                if new_tags:
+                    changelog[type_name].setdefault("CachedTagList", []).extend(sorted(new_tags))
                 
                 # Clean up intermediate files
                 os.remove(json_file_path)
@@ -369,6 +374,13 @@ def apply_changelogs(changelog_dirs, version, output_dir):
                     for actor, tags in block.items():
                         if actor not in master_data["ActorTagData"]:
                             master_data["ActorTagData"][actor] = tags
+
+                # Update CachedTagList with new tags from the changelog, ensuring no duplicates and sorting alphanumerically
+                new_tags = set(changes.get("CachedTagList", []))
+                existing_tags = set(master_data.get("CachedTagList", []))
+                updated_tags = sorted(existing_tags.union(new_tags))
+
+                master_data["CachedTagList"] = updated_tags
 
                 # Save the updated master data
                 with open(output_file_path, 'w') as f:
@@ -571,19 +583,25 @@ def parse_changelogs_to_files(changelog_json_path, output_directory):
         changelog = json.load(file)
 
     for product_type, changes in changelog.items():
-        if changes["Added blocks"] or changes["Edited blocks"]:
+        if changes.get("Added blocks") or changes.get("Edited blocks") or (product_type == "Tag.Product" and changes.get("CachedTagList")):
             if product_type == "Tag.Product":
                 output_path = os.path.join(output_directory, f"{product_type}.json")
                 with open(output_path, 'w') as json_file:
-                    json.dump(changes, json_file, indent=4)
+                    # Ensure all relevant sections are included for Tag.Product
+                    data_to_write = {
+                        "Added blocks": changes.get("Added blocks", []),
+                        "Edited blocks": changes.get("Edited blocks", []),
+                        "CachedTagList": changes.get("CachedTagList", [])
+                    }
+                    json.dump(data_to_write, json_file, indent=4)
             else:
                 output_path = os.path.join(output_directory, f"{product_type}.yaml")
                 with open(output_path, 'w') as text_file:
-                    if changes["Added blocks"]:
+                    if changes.get("Added blocks"):
                         for block in changes["Added blocks"]:
                             text_file.write('{ADDITION}\n')  # Prepend ADDITION to each block
                             text_file.write(block + "\n")
-                    if changes["Edited blocks"]:
+                    if changes.get("Edited blocks"):
                         for block in changes["Edited blocks"]:
                             text_file.write('{MODIFICATION}\n')  # Prepend MODIFICATION to each block
                             text_file.write(block + "\n")
@@ -614,6 +632,11 @@ def pack_files_to_changelog(files_directory, output_json_path):
                     changes["Added blocks"] = [block + "\n" if isinstance(block, str) else block for block in changes["Added blocks"]]
                 if "Edited blocks" in changes:
                     changes["Edited blocks"] = [block + "\n" if isinstance(block, str) else block for block in changes["Edited blocks"]]
+                
+                # Include CachedTagList if it exists in the JSON data
+                if "CachedTagList" in changes:
+                    changes["CachedTagList"] = changes["CachedTagList"]  # Directly take the CachedTagList from the file
+
                 changelog[product_type] = changes
         elif file_name.endswith('.yaml'):  # Assuming the extension is .yaml for plain text handling
             with open(file_path, 'r') as file:
